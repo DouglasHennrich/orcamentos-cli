@@ -19,14 +19,29 @@ export interface ResolveDeps {
   repo: AliasRepository;
   driver: IPortalDriver;
   prompter: Prompter;
+  interactive?: boolean;
 }
 
-export async function resolveLine(line: OrderLine, deps: ResolveDeps): Promise<ResolvedLine> {
-  const { platform, repo, driver, prompter } = deps;
+export async function resolveLine(
+  line: OrderLine,
+  deps: ResolveDeps,
+): Promise<ResolvedLine> {
+  const { platform, repo, driver, prompter, interactive = true } = deps;
 
   const cached = repo.find(platform, line.name);
   if (cached) {
-    return build(line, cached.productCode, cached.productName, cached.unitsPerBox);
+    return build(
+      line,
+      cached.productCode,
+      cached.productName,
+      cached.unitsPerBox,
+    );
+  }
+
+  if (!interactive) {
+    throw new Error(
+      `Produto não encontrado em modo não-interativo: "${line.name}"`,
+    );
   }
 
   // Miss -> interactive resolution (live search on the portal).
@@ -47,11 +62,18 @@ export async function resolveLine(line: OrderLine, deps: ResolveDeps): Promise<R
           detected = undefined;
         }
       }
-      const unitsPerBox = detected ?? await prompter.askInt(`Quantas unidades = 1 caixa de "${picked.name}"?`);
+      const unitsPerBox =
+        detected ??
+        (await prompter.askInt(
+          `Quantas unidades = 1 caixa de "${picked.name}"?`,
+        ));
       const extraRaw = await prompter.ask(
         `Outros nomes para este produto (separados por vírgula, ou Enter para pular):`,
       );
-      const extras = extraRaw.split(',').map((s) => s.trim()).filter(Boolean);
+      const extras = extraRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       repo.save({
         platform,
         aliases: [line.name, ...extras],
@@ -65,7 +87,12 @@ export async function resolveLine(line: OrderLine, deps: ResolveDeps): Promise<R
   }
 }
 
-function build(line: OrderLine, code: string, name: string, unitsPerBox: number): ResolvedLine {
+function build(
+  line: OrderLine,
+  code: string,
+  name: string,
+  unitsPerBox: number,
+): ResolvedLine {
   const siteUnits = toSiteUnits(line.quantity, unitsPerBox);
   return {
     name: line.name,

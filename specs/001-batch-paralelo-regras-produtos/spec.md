@@ -93,11 +93,13 @@ O usuário quer ter visibilidade de quais regras serão aplicadas ao rodar um or
 - **FR-001**: O sistema DEVE aceitar um arquivo JSON contendo um objeto único com a key `provider` obrigatória (`"autoamerica"` ou `"roberlo"`).
 - **FR-002**: O sistema DEVE aceitar um arquivo JSON contendo um array de objetos, cada um com a key `provider` obrigatória.
 - **FR-003**: O comando `run` DEVE remover a flag `--platform`; o provider passa a ser obrigatoriamente definido no JSON.
-- **FR-004**: Quando o JSON for um array, o sistema DEVE processar todos os pedidos em paralelo (simultaneamente).
+- **FR-004**: Quando o JSON for um array, o sistema DEVE processar todos os pedidos em paralelo (simultaneamente), respeitando um limite padrão de 3 execuções simultâneas.
+- **FR-004a**: O sistema DEVE permitir configurar o limite de paralelismo via flag `--concurrency` (default: 3).
 - **FR-005**: A falha de um orçamento em paralelo NÃO DEVE cancelar nem interromper os demais orçamentos em execução.
 - **FR-006**: Cada orçamento bem-sucedido DEVE gerar seu próprio arquivo PDF com nome único.
 - **FR-007**: O sistema DEVE exibir o resultado de cada orçamento (total, parcelas, caminho do PDF) à medida que cada um termina.
 - **FR-008**: O sistema DEVE exibir erros de orçamentos que falharam sem ocultar os demais resultados.
+- **FR-008a**: Ao final do processamento de um lote, o sistema DEVE exibir uma tabela SUMMARY consolidando o status (Sucesso/Falha) e detalhes de cada pedido.
 - **FR-009**: O sistema DEVE validar a presença da key `provider` em cada pedido antes de iniciar o processamento; se ausente em qualquer pedido, exibe erro e encerra sem processar nada.
 - **FR-010**: O sistema DEVE validar que o valor de `provider` é `"autoamerica"` ou `"roberlo"`; valores inválidos resultam em erro descritivo.
 - **FR-010a**: Em modo batch (JSON array com N > 1 pedidos), prompts interativos NÃO são suportados. Se qualquer orçamento encontrar uma situação que exigiria intervenção do usuário (produto sem alias conhecido, valor mínimo inatingível sem bump manual), esse orçamento DEVE falhar com mensagem descritiva sem bloquear os demais.
@@ -107,11 +109,13 @@ O usuário quer ter visibilidade de quais regras serão aplicadas ao rodar um or
 
 - **FR-011**: O sistema DEVE persistir regras de produtos em armazenamento local (no mesmo banco de dados de aliases existente, nova tabela dedicada).
 - **FR-012**: Cada regra DEVE ter: identificador único, provider (`autoamerica` | `roberlo`), tipo (`add-product` | `override-discount`), código do produto, estado (habilitada/desabilitada).
-- **FR-013**: Regras do tipo `add-product` DEVEM ter quantity obrigatória (valor numérico + unidade: `UN` ou `CX`).
+- **FR-012a**: O sistema DEVE garantir a unicidade de uma regra baseada no trio: `provider` + `type` + `product_code`. Não é permitido ter duas regras do mesmo tipo para o mesmo produto no mesmo provider.
+- **FR-013**: Regras do tipo `add-product` DEVEM ter quantity obrigatória, persistida em duas colunas: `quantity_value` (inteiro) e `quantity_unit` (`UN` ou `CX`).
 - **FR-014**: Regras do tipo `override-discount` DEVEM ter percentual de desconto obrigatório (número entre -100 e 100).
 - **FR-015**: O sistema DEVE fornecer um subcomando `rules` com editor interativo que permita: listar, criar, editar, habilitar/desabilitar e deletar regras.
-- **FR-016**: A criação de regra via editor interativo DEVE guiar o usuário passo a passo (wizard): escolher provider → tipo → código do produto → quantidade/desconto.
-- **FR-017**: A listagem de regras DEVE exibir: índice, estado (ativo/inativo), provider, tipo, código do produto, e quantidade ou percentual.
+- **FR-015a**: O subcomando `rules` DEVE iniciar solicitando que o usuário escolha um `provider` para gerenciar.
+- **FR-016**: A criação de regra via editor interativo DEVE guiar o usuário passo a passo (wizard): tipo → código do produto → quantidade/desconto.
+- **FR-017**: A listagem de regras DEVE exibir: índice, estado (ativo/inativo), tipo, código do produto, e quantidade ou percentual.
 - **FR-018**: A deleção de regra DEVE exigir confirmação explícita do usuário antes de remover.
 - **FR-019**: Antes de processar as linhas de um pedido, o sistema DEVE carregar e aplicar automaticamente todas as regras habilitadas do provider correspondente.
 - **FR-020**: Regras `add-product` DEVEM ser injetadas no conjunto de linhas do pedido como novas linhas identificadas pelo código exato do produto (não pelo nome); se uma linha com o mesmo código do produto já existe no pedido (após resolução de aliases), as quantidades DEVEM ser somadas em vez de criar linha duplicada.
@@ -122,7 +126,7 @@ O usuário quer ter visibilidade de quais regras serão aplicadas ao rodar um or
 
 - **Pedido (Order)**: Representa um orçamento a ser gerado. Atributos: `provider`, `client`, `produtos` (array de linhas com `name` e `quantity`).
 - **Lote (Batch)**: Um conjunto de pedidos a serem processados em paralelo. Pode ter 1 ou N pedidos.
-- **Regra de Produto (ProductRule)**: Regra persistida que afeta a composição ou preço de um orçamento. Atributos: `id`, `provider`, `type`, `product_code`, `product_name` (opcional), `quantity` (para add-product), `discount_pct` (para override-discount), `enabled`, `created_at`.
+- **Regra de Produto (ProductRule)**: Regra persistida que afeta a composição ou preço de um orçamento. Atributos: `id`, `provider`, `type`, `product_code`, `product_name` (opcional), `quantity_value`, `quantity_unit` (para add-product), `discount_pct` (para override-discount), `enabled`, `created_at`.
 
 ---
 
@@ -130,10 +134,10 @@ O usuário quer ter visibilidade de quais regras serão aplicadas ao rodar um or
 
 ### Measurable Outcomes
 
-- **SC-001**: O usuário consegue processar N orçamentos em uma única chamada ao CLI, com tempo total próximo ao do orçamento mais lento (não soma dos tempos individuais).
+- **SC-001**: O usuário consegue processar N orçamentos em uma única chamada ao CLI, com tempo total próximo ao do orçamento mais lento respeitando o limite de paralelismo (default 3).
 - **SC-002**: O usuário consegue criar uma nova regra de produto em menos de 60 segundos via editor interativo.
 - **SC-003**: Regras ativas são aplicadas em 100% dos orçamentos do provider correspondente sem intervenção manual.
-- **SC-004**: Um orçamento com falha em lote não impede os demais de completar; o usuário recebe resultado parcial com indicação clara de qual falhou e por quê.
+- **SC-004**: Um orçamento com falha em lote não impede os demais de completar; o usuário recebe uma tabela summary clara com o status de cada item ao final.
 - **SC-005**: O usuário consegue identificar todas as regras ativas para um provider em uma única tela do editor interativo.
 - **SC-006**: O exemplo `pedido.example.json` é atualizado para refletir o novo formato obrigatório com `provider`.
 

@@ -5,33 +5,47 @@ import { autoamerica } from '../platforms/autoamerica.js';
 import type { Prompter } from '../io/prompt.js';
 import type { IPortalDriver, DriverResult } from '../platforms/types.js';
 import type { AliasRepository } from '../db/alias-repository.js';
+import type { ProductRuleRepository } from '../db/product-rule-repository.js';
 
 /** Stub driver: total is computed from boxes * pricePerBox map (6 units/box). */
 function priceModelDriver(pricePerBox: Record<string, number>) {
   const units: Record<string, number> = {};
-  const ok = (data?: unknown): DriverResult<unknown> => ({ status: 'success', summary: '', data });
+  const ok = (data?: unknown): DriverResult<unknown> => ({
+    status: 'success',
+    summary: '',
+    data,
+  });
 
   return {
     login: vi.fn(async () => ok()),
     startQuote: vi.fn(async () => ok()),
     searchProducts: vi.fn(),
-    addLine: vi.fn(async (code: string, u: number) => { units[code] = u; return ok(); }),
-    updateLine: vi.fn(async (code: string, u: number) => { units[code] = u; return ok(); }),
+    addLine: vi.fn(async (code: string, u: number) => {
+      units[code] = u;
+      return ok();
+    }),
+    updateLine: vi.fn(async (code: string, u: number) => {
+      units[code] = u;
+      return ok();
+    }),
     readLinePrice: vi.fn(async () => ok({ unit: 0, total: 0 })),
     applyDiscount: vi.fn(async () => ok()),
     readOrderTotal: vi.fn(async () => {
       const total = Object.entries(units).reduce(
-        (sum, [code, u]) => sum + (u / 6) * (pricePerBox[code] ?? 0), 0,
+        (sum, [code, u]) => sum + (u / 6) * (pricePerBox[code] ?? 0),
+        0,
       );
       return ok(total);
     }),
     setParcelas: vi.fn(async () => ok()),
     save: vi.fn(async () => ok()),
-    exportQuote: vi.fn(async () => ok({
-      pdfBase64: 'JVBERi0=',
-      orcamentoNumber: '098171',
-      clientName: 'CLIENTE STUB',
-    })),
+    exportQuote: vi.fn(async () =>
+      ok({
+        pdfBase64: 'JVBERi0=',
+        orcamentoNumber: '098171',
+        clientName: 'CLIENTE STUB',
+      }),
+    ),
     _units: units,
   };
 }
@@ -53,6 +67,16 @@ function stubRepo(): AliasRepository {
   } as unknown as AliasRepository;
 }
 
+function stubRuleRepo(rules: any[] = []): ProductRuleRepository {
+  return {
+    listByProvider: vi.fn(() => rules),
+    save: vi.fn(),
+    delete: vi.fn(),
+    setEnabled: vi.fn(),
+    close: vi.fn(),
+  } as unknown as ProductRuleRepository;
+}
+
 // Helper: an order line where quantity is expressed in boxes.
 const orderLine = (code: string, boxes: number) => ({
   name: code,
@@ -64,10 +88,21 @@ const stubExportWriter = () => vi.fn(async () => '/tmp/orc/CLIENTE STUB.pdf');
 describe('runOrcamento', () => {
   it('stops at minimum when total already meets it; sets correct parcelas; saves', async () => {
     const driver = priceModelDriver({ A: 3000 }); // 1 box = 3000 >= 2500
-    const prompter: Prompter = { ask: vi.fn(), choose: vi.fn(), askInt: vi.fn(), askInts: vi.fn() };
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
     const result = await runOrcamento({
-      platform: autoamerica, client: 'c', orderLines: [orderLine('A', 1)],
-      driver: driver as unknown as IPortalDriver, prompter, repo: stubRepo(), exportWriter: stubExportWriter(),
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      ruleRepo: stubRuleRepo(),
+      exportWriter: stubExportWriter(),
     });
     expect(driver.save).toHaveBeenCalled();
     expect(driver.setParcelas).toHaveBeenCalledWith({ label: '30/60' }); // 3000 < 5000
@@ -79,10 +114,21 @@ describe('runOrcamento', () => {
     // Each box = 1000; start with 1 box = 1000; need >= 2500 -> 3 boxes
     const driver = priceModelDriver({ A: 1000 });
     const askInts = vi.fn(async () => [1]); // user always picks line #1
-    const prompter: Prompter = { ask: vi.fn(), choose: vi.fn(), askInt: vi.fn(), askInts };
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts,
+    };
     await runOrcamento({
-      platform: autoamerica, client: 'c', orderLines: [orderLine('A', 1)],
-      driver: driver as unknown as IPortalDriver, prompter, repo: stubRepo(), exportWriter: stubExportWriter(),
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      ruleRepo: stubRuleRepo(),
+      exportWriter: stubExportWriter(),
     });
     // Should end up with 3 boxes = 18 units (1 initial + 2 bumps via updateLine)
     expect(driver._units.A).toBe(18);
@@ -91,21 +137,43 @@ describe('runOrcamento', () => {
 
   it('applies 15% line discount when a line exceeds 10 boxes (Auto America)', async () => {
     const driver = priceModelDriver({ A: 300 }); // 11 boxes * 300 = 3300 >= 2500
-    const prompter: Prompter = { ask: vi.fn(), choose: vi.fn(), askInt: vi.fn(), askInts: vi.fn() };
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
     await runOrcamento({
-      platform: autoamerica, client: 'c', orderLines: [orderLine('A', 11)],
-      driver: driver as unknown as IPortalDriver, prompter, repo: stubRepo(), exportWriter: stubExportWriter(),
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 11)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      ruleRepo: stubRuleRepo(),
+      exportWriter: stubExportWriter(),
     });
     expect(driver.applyDiscount).toHaveBeenCalledWith('A', 15);
   });
 
   it('exports the quote after saving and returns the written path', async () => {
     const driver = priceModelDriver({ A: 3000 });
-    const prompter: Prompter = { ask: vi.fn(), choose: vi.fn(), askInt: vi.fn(), askInts: vi.fn() };
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
     const exportWriter = vi.fn(async () => '/out/autoamerica/CLIENTE STUB.pdf');
     const result = await runOrcamento({
-      platform: autoamerica, client: 'c', orderLines: [orderLine('A', 1)],
-      driver: driver as unknown as IPortalDriver, prompter, repo: stubRepo(), exportWriter,
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      ruleRepo: stubRuleRepo(),
+      exportWriter,
     });
     expect(driver.exportQuote).toHaveBeenCalled();
     expect(exportWriter).toHaveBeenCalledWith({
@@ -118,11 +186,169 @@ describe('runOrcamento', () => {
 
   it('throws when the mandatory export fails', async () => {
     const driver = priceModelDriver({ A: 3000 });
-    driver.exportQuote = vi.fn(async () => ({ status: 'error' as const, summary: 'listagem vazia' }));
-    const prompter: Prompter = { ask: vi.fn(), choose: vi.fn(), askInt: vi.fn(), askInts: vi.fn() };
-    await expect(runOrcamento({
-      platform: autoamerica, client: 'c', orderLines: [orderLine('A', 1)],
-      driver: driver as unknown as IPortalDriver, prompter, repo: stubRepo(), exportWriter: stubExportWriter(),
-    })).rejects.toThrow(/export obrigat/i);
+    driver.exportQuote = vi.fn(async () => ({
+      status: 'error' as const,
+      summary: 'listagem vazia',
+    }));
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+    await expect(
+      runOrcamento({
+        platform: autoamerica,
+        client: 'c',
+        orderLines: [orderLine('A', 1)],
+        driver: driver as unknown as IPortalDriver,
+        prompter,
+        repo: stubRepo(),
+        ruleRepo: stubRuleRepo(),
+        exportWriter: stubExportWriter(),
+      }),
+    ).rejects.toThrow(/export obrigat/i);
+  });
+
+  it('injects add-product rule when product is missing', async () => {
+    const driver = priceModelDriver({ A: 1000, B: 2000 });
+    const ruleRepo = stubRuleRepo([
+      {
+        type: 'add-product',
+        productCode: 'B',
+        quantityValue: 1,
+        quantityUnit: 'CX',
+        enabled: true,
+        unitsPerBox: 6,
+      },
+    ]);
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+    await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      ruleRepo,
+      exportWriter: stubExportWriter(),
+    });
+    expect(driver.addLine).toHaveBeenCalledWith('A', 6);
+    expect(driver.addLine).toHaveBeenCalledWith('B', 6);
+  });
+
+  it('sums add-product rule with existing line', async () => {
+    const driver = priceModelDriver({ A: 1000 });
+    const ruleRepo = stubRuleRepo([
+      {
+        type: 'add-product',
+        productCode: 'A',
+        quantityValue: 2,
+        quantityUnit: 'CX',
+        enabled: true,
+        unitsPerBox: 6,
+      },
+    ]);
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+    await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      ruleRepo,
+      exportWriter: stubExportWriter(),
+    });
+    // 1 user box + 2 rule boxes = 3 boxes = 18 units
+    expect(driver.addLine).toHaveBeenCalledWith('A', 18);
+  });
+
+  it('applies override-discount rule instead of automatic logic', async () => {
+    const driver = priceModelDriver({ A: 300 }); // 11 boxes * 300 = 3300 -> 15% auto
+    const ruleRepo = stubRuleRepo([
+      {
+        type: 'override-discount',
+        productCode: 'A',
+        discountPct: 5,
+        enabled: true,
+      },
+    ]);
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+    await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 11)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      ruleRepo,
+      exportWriter: stubExportWriter(),
+    });
+    expect(driver.applyDiscount).toHaveBeenCalledWith('A', 5);
+    expect(driver.applyDiscount).not.toHaveBeenCalledWith('A', 15);
+  });
+
+  it('throws in non-interactive mode when below minimum', async () => {
+    const driver = priceModelDriver({ A: 1000 }); // 1000 < 2500
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+    await expect(
+      runOrcamento({
+        platform: autoamerica,
+        client: 'c',
+        orderLines: [orderLine('A', 1)],
+        driver: driver as unknown as IPortalDriver,
+        prompter,
+        repo: stubRepo(),
+        ruleRepo: stubRuleRepo(),
+        exportWriter: stubExportWriter(),
+        interactive: false,
+      }),
+    ).rejects.toThrow(/requer intervenção manual/i);
+  });
+
+  it('throws in non-interactive mode when alias missing', async () => {
+    const driver = priceModelDriver({});
+    const repo = stubRepo();
+    repo.find = vi.fn(() => undefined);
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+    await expect(
+      runOrcamento({
+        platform: autoamerica,
+        client: 'c',
+        orderLines: [orderLine('A', 1)],
+        driver: driver as unknown as IPortalDriver,
+        prompter,
+        repo,
+        ruleRepo: stubRuleRepo(),
+        exportWriter: stubExportWriter(),
+        interactive: false,
+      }),
+    ).rejects.toThrow(/modo não-interativo/i);
   });
 });
