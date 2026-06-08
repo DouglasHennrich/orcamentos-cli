@@ -1,7 +1,9 @@
 // src/platforms/types.ts
 export type Platform = 'autoamerica' | 'roberlo';
 
-export interface ParcelaPlan { label: string; }
+export interface ParcelaPlan {
+  label: string;
+}
 
 export interface PlatformConfig {
   id: Platform;
@@ -17,7 +19,10 @@ export interface PlatformConfig {
   computeParcelas(total: number): ParcelaPlan;
 }
 
-export interface ProductOption { code: string; name: string; }
+export interface ProductOption {
+  code: string;
+  name: string;
+}
 
 export interface ExportedQuote {
   /** Conteúdo do PDF do orçamento, codificado em base64. */
@@ -52,11 +57,15 @@ export interface IPortalDriver {
   addLine(productCode: string, units: number): Promise<DriverResult>;
   /** Update the quantity of an already-added line in place (for minimum-value bumps). */
   updateLine(productCode: string, units: number): Promise<DriverResult>;
-  readLinePrice(productCode: string): Promise<DriverResult<{ unit: number; total: number }>>;
+  readLinePrice(
+    productCode: string,
+  ): Promise<DriverResult<{ unit: number; total: number }>>;
   applyDiscount(productCode: string, pct: number): Promise<DriverResult>;
   readOrderTotal(): Promise<DriverResult<number>>;
   setParcelas(plan: ParcelaPlan): Promise<DriverResult>;
   save(): Promise<DriverResult>;
   /** Exporta (baixa o PDF) do orçamento recém-criado, lendo a 1ª linha da listagem. */
   exportQuote(): Promise<DriverResult<ExportedQuote>>;
+  /** Fecha recursos do driver (ex: encerrar processo do browser se aplicável). */
+  close?(): Promise<void>;
 }
