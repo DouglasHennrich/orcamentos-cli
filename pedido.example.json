@@ -1,0 +1,21 @@
+{
+  "client": "27980912000123",
+  "produtos": [
+    {
+      "name": "super polidor",
+      "quantity": "3"
+    },
+    {
+      "name": "TRIPLE WAX 300GR",
+      "quantity": "8 UN"
+    },
+    {
+      "name": "heavy cut foam",
+      "quantity": "2 CX"
+    },
+    {
+      "name": "medium cut foam",
+      "quantity": "1 CX"
+    }
+  ]
+}
