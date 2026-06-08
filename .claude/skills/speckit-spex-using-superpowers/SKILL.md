@@ -1,0 +1,1 @@
+../../../.specify/extensions/spex/.specify-dev/agent-commands/claude/speckit-spex-using-superpowers/SKILL.md

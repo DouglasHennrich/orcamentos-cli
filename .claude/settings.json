@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill",
+      "Bash(specify *)",
+      "Bash(*spex-init.sh*)",
+      "Bash(*spex-ship-statusline.sh*)"
+    ]
+  }
+}

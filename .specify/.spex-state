@@ -1,0 +1,10 @@
+{
+  "mode": "flow",
+  "started_at": "2026-06-08T16:14:19Z",
+  "feature_branch": "001-batch-paralelo-regras-produtos",
+  "spec_dir": "specs/001-batch-paralelo-regras-produtos",
+  "implemented": false,
+  "clarified": false,
+  "review_spec_passed": true,
+  "running": ""
+}
