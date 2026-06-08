@@ -50,9 +50,11 @@ O usuário precisa definir, alterar e remover regras que se aplicam automaticame
 
 4. **Given** uma regra `override-discount` ativa para produto Y com desconto 20%, **When** o sistema calcula descontos para um orçamento do provider correspondente, **Then** o desconto do produto Y é 20% independente do cálculo automático da plataforma.
 
-5. **Given** uma regra existente, **When** o usuário a seleciona no editor e escolhe "Desabilitar", **Then** a regra permanece salva mas não é aplicada nos orçamentos subsequentes.
+5. **Given** uma regra existente, **When** o usuário a seleciona no editor e escolhe "Editar", **Then** o wizard abre com os valores atuais pré-preenchidos e o usuário pode alterar quantity (para add-product) ou discount_pct (para override-discount); o tipo e o código do produto não podem ser alterados (para editar esses campos, deletar e recriar a regra).
 
-6. **Given** uma regra existente, **When** o usuário a seleciona e escolhe "Deletar" com confirmação, **Then** a regra é removida permanentemente e não aparece mais na listagem.
+6. **Given** uma regra existente, **When** o usuário a seleciona no editor e escolhe "Desabilitar", **Then** a regra permanece salva mas não é aplicada nos orçamentos subsequentes.
+
+7. **Given** uma regra existente, **When** o usuário a seleciona e escolhe "Deletar" com confirmação, **Then** a regra é removida permanentemente e não aparece mais na listagem.
 
 ---
 
@@ -98,6 +100,8 @@ O usuário quer ter visibilidade de quais regras serão aplicadas ao rodar um or
 - **FR-008**: O sistema DEVE exibir erros de orçamentos que falharam sem ocultar os demais resultados.
 - **FR-009**: O sistema DEVE validar a presença da key `provider` em cada pedido antes de iniciar o processamento; se ausente em qualquer pedido, exibe erro e encerra sem processar nada.
 - **FR-010**: O sistema DEVE validar que o valor de `provider` é `"autoamerica"` ou `"roberlo"`; valores inválidos resultam em erro descritivo.
+- **FR-010a**: Em modo batch (JSON array com N > 1 pedidos), prompts interativos NÃO são suportados. Se qualquer orçamento encontrar uma situação que exigiria intervenção do usuário (produto sem alias conhecido, valor mínimo inatingível sem bump manual), esse orçamento DEVE falhar com mensagem descritiva sem bloquear os demais.
+- **FR-010b**: Em modo single (JSON objeto único), o comportamento interativo atual (prompts de alias e bump de valor mínimo) DEVE ser preservado sem alteração.
 
 #### Feature 2: Regras de Produtos
 
@@ -110,7 +114,7 @@ O usuário quer ter visibilidade de quais regras serão aplicadas ao rodar um or
 - **FR-017**: A listagem de regras DEVE exibir: índice, estado (ativo/inativo), provider, tipo, código do produto, e quantidade ou percentual.
 - **FR-018**: A deleção de regra DEVE exigir confirmação explícita do usuário antes de remover.
 - **FR-019**: Antes de processar as linhas de um pedido, o sistema DEVE carregar e aplicar automaticamente todas as regras habilitadas do provider correspondente.
-- **FR-020**: Regras `add-product` DEVEM ser injetadas no conjunto de linhas do pedido; se o mesmo código já existe no pedido, as quantidades DEVEM ser somadas.
+- **FR-020**: Regras `add-product` DEVEM ser injetadas no conjunto de linhas do pedido como novas linhas identificadas pelo código exato do produto (não pelo nome); se uma linha com o mesmo código do produto já existe no pedido (após resolução de aliases), as quantidades DEVEM ser somadas em vez de criar linha duplicada.
 - **FR-021**: Regras `override-discount` DEVEM substituir o desconto calculado automaticamente pela plataforma para o produto especificado.
 - **FR-022**: Quando o orçamento for iniciado, o sistema DEVE exibir as regras ativas do provider caso existam.
 
