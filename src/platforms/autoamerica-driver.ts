@@ -1,8 +1,16 @@
-import type { IPortalDriver, StartQuoteOpts, DriverResult, ProductOption, ParcelaPlan, ExportedQuote } from './types.js';
+import type {
+  IPortalDriver,
+  StartQuoteOpts,
+  DriverResult,
+  ProductOption,
+  ParcelaPlan,
+  ExportedQuote,
+} from './types.js';
 import type { AgentBrowserRunner } from './agent-browser-runner.js';
 import { parseBRL, exportLastQuote } from './driver-helpers.js';
 
-const LOGIN_URL = 'https://representante.autoamerica.com.br:5100/portal/U_PortalLogin.apw';
+const LOGIN_URL =
+  'https://representante.autoamerica.com.br:5100/portal/U_PortalLogin.apw';
 
 // CJ_CONDPAG option values for each plan label
 const PARCELAS_CODE: Record<string, string> = {
@@ -25,7 +33,8 @@ export class AutoAmericaDriver implements IPortalDriver {
 
   private async evalRaw(js: string): Promise<string> {
     const result = await this.runner(['eval', js]);
-    if (result.code !== 0) throw new Error(`eval failed: ${result.stderr.trim()}`);
+    if (result.code !== 0)
+      throw new Error(`eval failed: ${result.stderr.trim()}`);
     // agent-browser eval serialises the return value as JSON (strings get outer quotes).
     // Parse once to recover the actual JS value, then coerce to string.
     const raw = result.stdout.trim();
@@ -40,7 +49,8 @@ export class AutoAmericaDriver implements IPortalDriver {
 
   private async navigate(url: string): Promise<void> {
     const result = await this.runner(['navigate', url]);
-    if (result.code !== 0) throw new Error(`navigate failed: ${result.stderr.trim()}`);
+    if (result.code !== 0)
+      throw new Error(`navigate failed: ${result.stderr.trim()}`);
   }
 
   private async waitLoad(): Promise<void> {
@@ -52,7 +62,7 @@ export class AutoAmericaDriver implements IPortalDriver {
     while (Date.now() - start < maxMs) {
       const ok = await this.evalRaw(`String(!!(${conditionJs}))`);
       if (ok === 'true') return true;
-      await new Promise(r => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 200));
     }
     return false;
   }
@@ -111,7 +121,11 @@ export class AutoAmericaDriver implements IPortalDriver {
     `);
 
     if (!clientValue) {
-      return { status: 'error', summary: `Cliente não encontrado: ${opts.client}`, next_actions: ['Verifique o CNPJ/nome do cliente'] };
+      return {
+        status: 'error',
+        summary: `Cliente não encontrado: ${opts.client}`,
+        next_actions: ['Verifique o CNPJ/nome do cliente'],
+      };
     }
 
     // 1. Select client and trigger SelCliente() which loads price tables via async AJAX.
@@ -122,9 +136,15 @@ export class AutoAmericaDriver implements IPortalDriver {
     `);
 
     // Wait for SelCliente() AJAX to populate CJ_TABELA options.
-    const tabelasLoaded = await this.waitFor(`document.getElementById('CJ_TABELA')?.options.length > 1`, 10000);
+    const tabelasLoaded = await this.waitFor(
+      `document.getElementById('CJ_TABELA')?.options.length > 1`,
+      10000,
+    );
     if (!tabelasLoaded) {
-      return { status: 'error', summary: 'Tabelas de preço não carregaram (SelCliente timeout)' };
+      return {
+        status: 'error',
+        summary: 'Tabelas de preço não carregaram (SelCliente timeout)',
+      };
     }
 
     // 2. Set price table and call selProd() which loads products via synchronous AJAX.
@@ -140,9 +160,15 @@ export class AutoAmericaDriver implements IPortalDriver {
     `);
 
     // Wait for products to be populated (selProd uses async:false, but we verify anyway).
-    const produtosLoaded = await this.waitFor(`document.getElementById('CK_PRODUTO01')?.options.length > 1`, 10000);
+    const produtosLoaded = await this.waitFor(
+      `document.getElementById('CK_PRODUTO01')?.options.length > 1`,
+      10000,
+    );
     if (!produtosLoaded) {
-      return { status: 'error', summary: 'Produtos não carregaram (selProd timeout)' };
+      return {
+        status: 'error',
+        summary: 'Produtos não carregaram (selProd timeout)',
+      };
     }
 
     // 3. Set remaining header fields.
@@ -154,7 +180,10 @@ export class AutoAmericaDriver implements IPortalDriver {
     `);
 
     this.itemCount = 0;
-    return { status: 'success', summary: `Orçamento iniciado para ${opts.client}` };
+    return {
+      status: 'success',
+      summary: `Orçamento iniciado para ${opts.client}`,
+    };
   }
 
   async readUnitsPerBox(productCode: string): Promise<number | undefined> {
@@ -202,20 +231,36 @@ export class AutoAmericaDriver implements IPortalDriver {
   }
 
   async searchProducts(terms: string): Promise<DriverResult<ProductOption[]>> {
-    // Products are pre-loaded (280 options) in CK_PRODUTO01 — filter client-side
+    // Products are pre-loaded (280 options) in CK_PRODUTO01 — filter client-side.
+    // Split terms into words so "super polidor 1kg" matches "SUPER POLIDOR AUTOAMERICA 1KG".
     const data = await this.evalJson<ProductOption[]>(`
       JSON.stringify(
-        Array.from(document.getElementById('CK_PRODUTO01').options)
-          .filter(o => o.value && o.text.toLowerCase().includes(${JSON.stringify(terms.toLowerCase())}))
-          .slice(0, 20)
-          .map(o => ({code: o.value, name: o.text}))
+        (function() {
+          var words = ${JSON.stringify(terms.toLowerCase())}.split(/\\s+/).filter(Boolean);
+          return Array.from(document.getElementById('CK_PRODUTO01').options)
+            .filter(function(o) {
+              if (!o.value) return false;
+              var text = o.text.toLowerCase();
+              return words.every(function(w) { return text.includes(w); });
+            })
+            .slice(0, 20)
+            .map(function(o) { return {code: o.value, name: o.text}; });
+        })()
       )
     `);
 
     if (data.length === 0) {
-      return { status: 'warning', summary: `Nenhum produto encontrado para: "${terms}"`, data: [] };
+      return {
+        status: 'warning',
+        summary: `Nenhum produto encontrado para: "${terms}"`,
+        data: [],
+      };
     }
-    return { status: 'success', summary: `${data.length} produto(s) encontrado(s)`, data };
+    return {
+      status: 'success',
+      summary: `${data.length} produto(s) encontrado(s)`,
+      data,
+    };
   }
 
   async addLine(productCode: string, units: number): Promise<DriverResult> {
@@ -223,11 +268,18 @@ export class AutoAmericaDriver implements IPortalDriver {
     const n = pad(this.itemCount);
 
     if (this.itemCount > 1) {
-      await this.evalRaw(`document.getElementById('btAddItm').click(); 'clicked'`);
-      const appeared = await this.waitFor(`document.getElementById('CK_PRODUTO${n}')`);
+      await this.evalRaw(
+        `document.getElementById('btAddItm').click(); 'clicked'`,
+      );
+      const appeared = await this.waitFor(
+        `document.getElementById('CK_PRODUTO${n}')`,
+      );
       if (!appeared) {
         this.itemCount -= 1;
-        return { status: 'error', summary: `Linha ${n} não apareceu após clicar em Novo Item` };
+        return {
+          status: 'error',
+          summary: `Linha ${n} não apareceu após clicar em Novo Item`,
+        };
       }
     }
 
@@ -277,7 +329,10 @@ export class AutoAmericaDriver implements IPortalDriver {
 
     if (priceResult === '__ERROR__') {
       this.itemCount -= 1;
-      return { status: 'error', summary: `Falha ao buscar preço do produto ${productCode} (U_GATPROD.APW)` };
+      return {
+        status: 'error',
+        summary: `Falha ao buscar preço do produto ${productCode} (U_GATPROD.APW)`,
+      };
     }
 
     // Set quantity and trigger price recalculation
@@ -289,7 +344,16 @@ export class AutoAmericaDriver implements IPortalDriver {
       'done'
     `);
 
-    return { status: 'success', summary: `Item ${n}: produto ${productCode} × ${units} un` };
+    // VldValor may trigger async AJAX to compute CK_VALOR{n}; wait for it.
+    await this.waitFor(
+      `(document.getElementById('CK_VALOR${n}')?.value || '').replace(/[^0-9]/g,'') !== ''`,
+      5000,
+    );
+
+    return {
+      status: 'success',
+      summary: `Item ${n}: produto ${productCode} × ${units} un`,
+    };
   }
 
   async updateLine(productCode: string, units: number): Promise<DriverResult> {
@@ -309,12 +373,20 @@ export class AutoAmericaDriver implements IPortalDriver {
       }
     `);
     if (result === 'not_found') {
-      return { status: 'error', summary: `Produto ${productCode} não encontrado nas linhas` };
+      return {
+        status: 'error',
+        summary: `Produto ${productCode} não encontrado nas linhas`,
+      };
     }
-    return { status: 'success', summary: `Produto ${productCode} atualizado para ${units} un` };
+    return {
+      status: 'success',
+      summary: `Produto ${productCode} atualizado para ${units} un`,
+    };
   }
 
-  async readLinePrice(productCode: string): Promise<DriverResult<{ unit: number; total: number }>> {
+  async readLinePrice(
+    productCode: string,
+  ): Promise<DriverResult<{ unit: number; total: number }>> {
     const raw = await this.evalRaw(`
       var n = null;
       for (var i = 1; i <= ${this.itemCount}; i++) {
@@ -327,7 +399,10 @@ export class AutoAmericaDriver implements IPortalDriver {
     `);
 
     if (raw === 'null') {
-      return { status: 'error', summary: `Produto ${productCode} não encontrado nas linhas` };
+      return {
+        status: 'error',
+        summary: `Produto ${productCode} não encontrado nas linhas`,
+      };
     }
 
     const { unit, total } = JSON.parse(raw) as { unit: string; total: string };
@@ -356,14 +431,31 @@ export class AutoAmericaDriver implements IPortalDriver {
     `);
 
     if (result === 'not_found') {
-      return { status: 'error', summary: `Produto ${productCode} não encontrado para aplicar desconto` };
+      return {
+        status: 'error',
+        summary: `Produto ${productCode} não encontrado para aplicar desconto`,
+      };
     }
-    return { status: 'success', summary: `Desconto ${pct}% aplicado em ${productCode}` };
+    return {
+      status: 'success',
+      summary: `Desconto ${pct}% aplicado em ${productCode}`,
+    };
   }
 
   async readOrderTotal(): Promise<DriverResult<number>> {
-    const raw = await this.evalRaw(`document.getElementById('TOTAL_ORC')?.value || '0'`);
-    return { status: 'success', summary: `Total do pedido: ${raw}`, data: parseBRL(raw) };
+    // Wait up to 3s for TOTAL_ORC to reflect the recalculated total after VldValor.
+    await this.waitFor(
+      `(document.getElementById('TOTAL_ORC')?.value || '0').replace(/[^0-9]/g,'') !== '0'`,
+      3000,
+    );
+    const raw = await this.evalRaw(
+      `document.getElementById('TOTAL_ORC')?.value || '0'`,
+    );
+    return {
+      status: 'success',
+      summary: `Total do pedido: ${raw}`,
+      data: parseBRL(raw),
+    };
   }
 
   async setParcelas(plan: ParcelaPlan): Promise<DriverResult> {
@@ -375,12 +467,19 @@ export class AutoAmericaDriver implements IPortalDriver {
         next_actions: ['Valores suportados: 30/60, 30/60/90'],
       };
     }
-    await this.evalRaw(`jQuery('#CJ_CONDPAG').val(${JSON.stringify(code)}).trigger('change'); 'done'`);
-    return { status: 'success', summary: `Parcelas definidas: ${plan.label} (código ${code})` };
+    await this.evalRaw(
+      `jQuery('#CJ_CONDPAG').val(${JSON.stringify(code)}).trigger('change'); 'done'`,
+    );
+    return {
+      status: 'success',
+      summary: `Parcelas definidas: ${plan.label} (código ${code})`,
+    };
   }
 
   async save(): Promise<DriverResult> {
-    await this.evalRaw(`document.getElementById('btSalvar').click(); 'clicked'`);
+    await this.evalRaw(
+      `document.getElementById('btSalvar').click(); 'clicked'`,
+    );
     await this.waitLoad();
     // After save the portal redirects to U_orcamento.apw (listing).
     // Wait for at least one table row so exportQuote() doesn't run on a half-loaded page.
@@ -397,7 +496,10 @@ export class AutoAmericaDriver implements IPortalDriver {
         data,
       };
     } catch (e) {
-      return { status: 'error', summary: `Falha ao exportar orçamento: ${(e as Error).message}` };
+      return {
+        status: 'error',
+        summary: `Falha ao exportar orçamento: ${(e as Error).message}`,
+      };
     }
   }
 }
