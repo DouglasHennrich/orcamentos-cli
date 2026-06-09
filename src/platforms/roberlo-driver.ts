@@ -132,12 +132,25 @@ export class RoberloDriver implements IPortalDriver {
   }
 
   async selectClient(code: string): Promise<DriverResult> {
+    // Before running any jQuery based command, ensure jQuery is loaded.
+    // Protheus/APW can be slow to inject scripts into the DOM.
+    await this.waitFor(`typeof jQuery !== 'undefined'`, 10000);
+
     await this.evalRaw(`
-      jQuery('#CJ_CLIENTE').val(${JSON.stringify(code)}).trigger('change');
+      (function() {
+        var el = jQuery('#CJ_CLIENTE');
+        el.val(${JSON.stringify(code)}).trigger('change');
+        el.focus().blur();
+      })();
       'done'
     `);
-    // Wait a bit for potential AJAX loads triggered by client change
-    await new Promise((r) => setTimeout(r, 500));
+
+    // Wait for the dynamic loading modal (blockUI/modal) to disappear
+    await this.waitFor(
+      `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+      15000,
+    );
+
     return { status: 'success', summary: `Cliente ${code} selecionado` };
   }
 
@@ -159,21 +172,72 @@ export class RoberloDriver implements IPortalDriver {
 
   async selectPriceTable(code: string): Promise<DriverResult> {
     await this.evalRaw(`
-      jQuery('#CK_XTABELA01').val(${JSON.stringify(code)}).trigger('change');
+      (function() {
+        var el = jQuery('#CK_XTABELA01');
+        el.val(${JSON.stringify(code)}).trigger('change');
+        el.focus().blur();
+      })();
       'done'
     `);
 
-    // Wait for product options to load before setting Modalidade/Frete/Transportadora
-    // so these fields are not reset by any AJAX triggered by table selection.
-    await new Promise((r) => setTimeout(r, 500));
+    // Wait for the dynamic loading modal (blockUI/modal) to disappear
+    await this.waitFor(
+      `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+      15000,
+    );
+
+    const produtosLoaded = await this.waitFor(
+      `document.getElementById('CK_PRODUTO01')?.options.length > 1`,
+      10000,
+    );
+    if (!produtosLoaded) {
+      return {
+        status: 'error',
+        summary: 'Produtos não carregaram (table selection timeout)',
+      };
+    }
 
     if (this.startOpts) {
-      await this.evalRaw(`
-        jQuery('#CJ_XTPORC').val('2').trigger('change');         // Previsto
-        jQuery('#CJ_TPFRETE').val('C').trigger('change');         // CIF
-        jQuery('#CJ_XTRANSP').val('000293').trigger('change');   // Trans-Face
-        'done'
-      `);
+      const { frete, transportadora } = this.startOpts;
+      const freteCode = frete === 'FOB' ? 'F' : 'C';
+
+      // Sequence field updates to avoid concurrent AJAX/UI reset conflicts
+      const headerFields = [
+        { id: '#CJ_TPFRETE', value: freteCode },
+        { id: '#CJ_XTRANSP', value: transportadora || '000293' },
+        { id: '#CJ_XTPORC', value: '2' }, // Previsto
+      ];
+
+      for (const field of headerFields) {
+        // Wait for UI to be clear before setting
+        await this.waitFor(
+          `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+          5000,
+        );
+
+        await this.evalRaw(`
+          (function() {
+            var el = jQuery(${JSON.stringify(field.id)});
+            if (el.length) {
+              el.val(${JSON.stringify(field.value)}).trigger('change');
+              el.focus().blur();
+            }
+          })();
+          'done'
+        `);
+        // Brief pause for any triggers to start
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      // Final blur to clear focus trapping
+      await this.evalRaw(
+        `if (document.activeElement) document.activeElement.blur(); 'done'`,
+      );
+
+      await this.waitFor(
+        `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+        10000,
+      );
     }
 
     return {
@@ -216,7 +280,10 @@ export class RoberloDriver implements IPortalDriver {
       await this.evalRaw(
         `jQuery('#CK_XTABELA${n}').val(${JSON.stringify(tabelaCode)}).trigger('change'); 'done'`,
       );
-      await new Promise((r) => setTimeout(r, 300)); // wait for product options to load
+      await this.waitFor(
+        `document.getElementById('CK_PRODUTO${n}')?.options.length > 1`,
+        5000,
+      );
     }
     return tabelaCode;
   }
@@ -233,7 +300,10 @@ export class RoberloDriver implements IPortalDriver {
       await this.evalRaw(
         `jQuery('#CK_XTABELA${n}').val(${JSON.stringify(tabelaCode)}).trigger('change'); 'done'`,
       );
-      await new Promise((r) => setTimeout(r, 300));
+      await this.waitFor(
+        `document.getElementById('CK_PRODUTO${n}')?.options.length > 1`,
+        5000,
+      );
       const found = await this.evalRaw(
         `!!Array.from(document.getElementById('CK_PRODUTO${n}').options).find(o => o.value === ${JSON.stringify(productCode)})`,
       );
@@ -256,7 +326,10 @@ export class RoberloDriver implements IPortalDriver {
       await this.evalRaw(
         `jQuery('#CK_XTABELA${slot}').val(${JSON.stringify(tabelaCode)}).trigger('change'); 'done'`,
       );
-      await new Promise((r) => setTimeout(r, 300));
+      await this.waitFor(
+        `document.getElementById('CK_PRODUTO${slot}')?.options.length > 1`,
+        5000,
+      );
     } else {
       const current = await this.evalRaw(
         `document.getElementById('CK_XTABELA${slot}')?.value || ''`,
@@ -270,10 +343,12 @@ export class RoberloDriver implements IPortalDriver {
       (function() {
         var pr = new URLSearchParams(location.search).get('PR') || '';
         var result = '';
+        var csrf = jQuery('input[name="CSRFToken"]').val() || '';
         jQuery.ajax({
           type: 'POST',
           url: 'U_GATPROD.APW' + (pr ? '?PR=' + encodeURIComponent(pr) : ''),
           data: {
+            CSRFToken:  csrf,
             produto:    ${JSON.stringify(productCode)},
             tabela:     jQuery('#CK_XTABELA${slot}').val() || '',
             cliente:    jQuery('#CJ_CLIENTE').val() || '',
@@ -326,7 +401,10 @@ export class RoberloDriver implements IPortalDriver {
       await this.evalRaw(
         `jQuery('#CK_XTABELA${n}').val(${JSON.stringify(tabelaCode)}).trigger('change'); 'done'`,
       );
-      await new Promise((r) => setTimeout(r, 300));
+      await this.waitFor(
+        `document.getElementById('CK_PRODUTO${n}')?.options.length > 1`,
+        5000,
+      );
 
       const opts = await this.evalJson<ProductOption[]>(`
         JSON.stringify(
@@ -365,17 +443,47 @@ export class RoberloDriver implements IPortalDriver {
     const n = pad(this.itemCount);
 
     if (this.itemCount > 1) {
-      await this.evalRaw(
-        `document.getElementById('btAddItm').click(); 'clicked'`,
+      // Robustly wait for any UI block to clear before clicking "Novo Item"
+      await this.waitFor(
+        `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+        10000,
       );
+
+      // Clear any previous error notifications or focus that might block the button
+      await this.evalRaw(`
+        (function() {
+          jQuery('.ui-pnotify-closer').click();
+          // Bootbox/Modal OK buttons
+          var ok = jQuery('.modal-dialog button[data-bb-handler="ok"], .modal-dialog button.btn-primary').filter(':visible');
+          if (ok.length) ok.click();
+          if (document.activeElement) document.activeElement.blur();
+        })();
+        'done'
+      `);
+
+      // Extra wait if we clicked a modal
+      await new Promise((r) => setTimeout(r, 500));
+
+      await this.evalRaw(`
+        (function() {
+          var btn = document.getElementById('btAddItm');
+          if (btn) {
+            btn.scrollIntoView();
+            btn.click();
+          }
+        })();
+        'clicked'
+      `);
+
       const appeared = await this.waitFor(
         `document.getElementById('CK_XTABELA${n}')`,
+        10000,
       );
       if (!appeared) {
         this.itemCount -= 1;
         return {
           status: 'error',
-          summary: `Linha ${n} não apareceu após clicar em Novo Item`,
+          summary: `Linha ${n} não apareceu após clicar em Novo Item. Verifique se algum aviso bloqueou a tela.`,
         };
       }
     }
@@ -388,7 +496,10 @@ export class RoberloDriver implements IPortalDriver {
       await this.evalRaw(
         `jQuery('#CK_XTABELA${n}').val(${JSON.stringify(tabelaCode)}).trigger('change'); 'done'`,
       );
-      await new Promise((r) => setTimeout(r, 300));
+      await this.waitFor(
+        `document.getElementById('CK_PRODUTO${n}')?.options.length > 1`,
+        5000,
+      );
     }
 
     if (!tabelaCode) {
@@ -404,18 +515,34 @@ export class RoberloDriver implements IPortalDriver {
       `jQuery('#CK_PRODUTO${n}').val(${JSON.stringify(productCode)}).trigger('change'); 'done'`,
     );
 
+    // Wait for any portal-side background loading ("buscando produto") triggered by product selection
+    await this.waitFor(
+      `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+      10000,
+    );
+
     // Populate price field by calling U_GATPROD.APW directly (async:false).
     // jQuery .trigger('change') does NOT fire native onchange attributes, so
     // gatProduto() is never called automatically — we replicate its AJAX call here.
     // Roberlo uses per-line tabela (CK_XTABELA${n}), not the global CJ_TABELA.
     const priceResult = await this.evalRaw(`
       (function() {
+        // First, check for any blocking modals (like out of stock) and clear them
+        var modalOk = jQuery('.modal-dialog button[data-bb-handler="ok"], .modal-dialog button.btn-primary').filter(':visible');
+        if (modalOk.length) {
+          modalOk.click();
+          // Small delay for modal animation
+          var start = Date.now(); while(Date.now() - start < 300) {}
+        }
+
         var pr = new URLSearchParams(location.search).get('PR') || '';
         var result = '';
+        var csrf = jQuery('input[name="CSRFToken"]').val() || '';
         jQuery.ajax({
           type: 'POST',
           url: 'U_GATPROD.APW' + (pr ? '?PR=' + encodeURIComponent(pr) : ''),
           data: {
+            CSRFToken:  csrf,
             produto:    ${JSON.stringify(productCode)},
             tabela:     jQuery('#CK_XTABELA${n}').val() || '',
             cliente:    jQuery('#CJ_CLIENTE').val() || '',
@@ -429,7 +556,10 @@ export class RoberloDriver implements IPortalDriver {
             if (!data || data.toUpperCase().indexOf('<META HTTP-EQUIV') >= 0) return;
             try {
               var oRet = JSON.parse(data);
-              if (oRet.erro) { result = '__ERROR__'; return; }
+              if (oRet.erro) {
+                result = '__ERROR__:' + (oRet.erro || 'Desconhecido');
+                return;
+              }
               var priceEl = document.getElementById('CK_XPRCIMP${n}');
               if (priceEl) priceEl.value = oRet.preco || '';
               var qtdEl = document.getElementById('QTD_EMB${n}');
@@ -444,21 +574,25 @@ export class RoberloDriver implements IPortalDriver {
         return result;
       })()`);
 
-    if (priceResult === '__ERROR__') {
+    if (priceResult.startsWith('__ERROR__')) {
       this.itemCount -= 1;
       return {
         status: 'error',
-        summary: `Falha ao buscar preço do produto ${productCode} (U_GATPROD.APW)`,
+        summary: `Falha ao buscar preço do produto ${productCode}: ${priceResult.split(':')[1] || 'Erro na requisição U_GATPROD.APW'}`,
       };
     }
 
     // Set quantity (field is disabled — must enable first)
+    // Use robust filling logic: trigger change and focus/blur
     await this.evalRaw(`
-      var q = document.getElementById('CK_QTDVEN${n}');
-      q.removeAttribute('disabled');
-      q.value = ${JSON.stringify(String(units))};
-      q.dispatchEvent(new Event('change', {bubbles:true}));
-      q.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true}));
+      (function() {
+        var q = jQuery('#CK_QTDVEN${n}');
+        q.removeAttr('disabled');
+        q.val(${JSON.stringify(String(units))}).trigger('change');
+        q.focus().blur();
+        // Roberlo also uses keyup to trigger some local calcs
+        q.trigger('keyup');
+      })();
       'done'
     `);
 
@@ -477,11 +611,11 @@ export class RoberloDriver implements IPortalDriver {
       }
       if (!n) 'not_found';
       else {
-        var q = document.getElementById('CK_QTDVEN'+n);
-        q.removeAttribute('disabled');
-        q.value = ${JSON.stringify(String(units))};
-        q.dispatchEvent(new Event('change', {bubbles:true}));
-        q.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true}));
+        var q = jQuery('#CK_QTDVEN'+n);
+        q.removeAttr('disabled');
+        q.val(${JSON.stringify(String(units))}).trigger('change');
+        q.focus().blur();
+        q.trigger('keyup');
         'done'
       }
     `);
@@ -545,7 +679,7 @@ export class RoberloDriver implements IPortalDriver {
 
     // Open detalhe modal
     await this.evalRaw(`detalheOrc('${n}'); 'ok'`);
-    await new Promise((r) => setTimeout(r, 400));
+    await this.waitFor(`document.querySelector('.modal.in')`, 3000);
 
     const discounts = await this.evalJson<Record<string, string>>(`
       var modal = document.querySelector('.modal.in');
@@ -563,6 +697,7 @@ export class RoberloDriver implements IPortalDriver {
     await this.evalRaw(
       `document.querySelector('.modal.in .bootbox-close-button')?.click(); 'closed'`,
     );
+    await this.waitFor(`!document.querySelector('.modal.in')`, 1000);
 
     const desc2 = parseFloat(discounts['% Desconto 2'] ?? '0');
     const desc3 = parseFloat(discounts['% Desconto 3'] ?? '0');
@@ -601,7 +736,7 @@ export class RoberloDriver implements IPortalDriver {
 
     // Open apply discount modal
     await this.evalRaw(`descPolimento('${n}'); 'ok'`);
-    await new Promise((r) => setTimeout(r, 400));
+    await this.waitFor(`document.querySelector('.modal.in')`, 3000);
 
     // Portal expects integer "basis points × 100": 15% → "1500", which it formats to "15,00%"
     const pctStr = String(Math.round(pct * 100));
@@ -609,28 +744,30 @@ export class RoberloDriver implements IPortalDriver {
     if (whichDesc === 3) {
       // iCK_XDESC03 may be disabled via JS property (not only HTML attribute) — clear both
       await this.evalRaw(`
-        var d3 = document.getElementById('iCK_XDESC03${n}');
-        if (d3) {
-          d3.removeAttribute('disabled');
-          d3.disabled = false;
-          d3.removeAttribute('readonly');
-          d3.value = ${JSON.stringify(pctStr)};
-          d3.dispatchEvent(new Event('input', {bubbles:true}));
-          d3.dispatchEvent(new Event('change', {bubbles:true}));
-        }
-        vldDesc('${n}');
+        (function() {
+          var d3 = jQuery('#iCK_XDESC03${n}');
+          if (d3.length) {
+            d3.removeAttr('disabled');
+            d3.prop('disabled', false);
+            d3.removeAttr('readonly');
+            d3.val(${JSON.stringify(pctStr)}).trigger('change');
+            d3.focus().blur();
+          }
+          vldDesc('${n}');
+        })();
         'done'
       `);
     } else {
       // Desconto 02 field is enabled by default
       await this.evalRaw(`
-        var d2 = document.getElementById('iCK_XDESC02${n}');
-        if (d2) {
-          d2.value = ${JSON.stringify(pctStr)};
-          d2.dispatchEvent(new Event('input', {bubbles:true}));
-          d2.dispatchEvent(new Event('change', {bubbles:true}));
-        }
-        vldDesc('${n}');
+        (function() {
+          var d2 = jQuery('#iCK_XDESC02${n}');
+          if (d2.length) {
+            d2.val(${JSON.stringify(pctStr)}).trigger('change');
+            d2.focus().blur();
+          }
+          vldDesc('${n}');
+        })();
         'done'
       `);
     }
@@ -639,7 +776,7 @@ export class RoberloDriver implements IPortalDriver {
     await this.evalRaw(
       `document.querySelector('.modal.in button[data-bb-handler="sucess"]')?.click(); 'ok'`,
     );
-    await new Promise((r) => setTimeout(r, 300));
+    await this.waitFor(`!document.querySelector('.modal.in')`, 3000);
 
     this.pendingDiscount.delete(productCode);
     return {
@@ -667,9 +804,28 @@ export class RoberloDriver implements IPortalDriver {
         summary: `Condição de pagamento não mapeada: "${plan.label}"`,
       };
     }
-    await this.evalRaw(
-      `jQuery('#CJ_CONDPAG').val(${JSON.stringify(code)}).trigger('change'); 'done'`,
+
+    // Wait for UI clear before setting (it may be busy computing totals)
+    await this.waitFor(
+      `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+      10000,
     );
+
+    await this.evalRaw(`
+      (function() {
+        var el = jQuery('#CJ_CONDPAG');
+        el.val(${JSON.stringify(code)}).trigger('change');
+        el.focus().blur();
+      })();
+      'done'
+    `);
+
+    // Recalculating totals often follows payment term change
+    await this.waitFor(
+      `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+      10000,
+    );
+
     return {
       status: 'success',
       summary: `Parcelas: ${plan.label} (código ${code})`,

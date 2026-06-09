@@ -185,6 +185,33 @@ describe('runOrcamento', () => {
     expect(result.exportPath).toBe('/out/autoamerica/CLIENTE STUB.pdf');
   });
 
+  it('does not save or export when running in dry-run mode', async () => {
+    const driver = priceModelDriver({ A: 3000 });
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+    const exportWriter = vi.fn(async () => '/out/autoamerica/CLIENTE STUB.pdf');
+    const result = await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      ruleRepo: stubRuleRepo(),
+      exportWriter,
+      dryRun: true,
+    });
+    expect(driver.save).not.toHaveBeenCalled();
+    expect(driver.exportQuote).not.toHaveBeenCalled();
+    expect(exportWriter).not.toHaveBeenCalled();
+    expect(result.total).toBe(3000);
+    expect(result.exportPath).toBe('(simulação)');
+  });
+
   it('throws when the mandatory export fails', async () => {
     const driver = priceModelDriver({ A: 3000 });
     driver.exportQuote = vi.fn(async () => ({

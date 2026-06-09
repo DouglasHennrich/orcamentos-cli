@@ -120,11 +120,21 @@ export class AutoAmericaDriver implements IPortalDriver {
   }
 
   async selectClient(code: string): Promise<DriverResult> {
+    // Before running any jQuery based command, ensure jQuery is loaded.
+    // Protheus/APW can be slow to inject scripts into the DOM.
+    await this.waitFor(`typeof jQuery !== 'undefined'`, 10000);
+
     await this.evalRaw(`
       jQuery('#CJ_CLIENTE').val(${JSON.stringify(code)}).trigger('change');
       SelCliente();
       'done'
     `);
+
+    // Wait for the dynamic loading modal (blockUI/modal) to disappear
+    await this.waitFor(
+      `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+      15000,
+    );
 
     const tabelasLoaded = await this.waitFor(
       `document.getElementById('CJ_TABELA')?.options.length > 1`,
@@ -166,6 +176,12 @@ export class AutoAmericaDriver implements IPortalDriver {
       'done'
     `);
 
+    // Wait for the dynamic loading modal (blockUI/modal) to disappear
+    await this.waitFor(
+      `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+      15000,
+    );
+
     const produtosLoaded = await this.waitFor(
       `document.getElementById('CK_PRODUTO01')?.options.length > 1`,
       10000,
@@ -178,12 +194,75 @@ export class AutoAmericaDriver implements IPortalDriver {
     }
 
     if (this.startOpts) {
+      const { frete, transportadora } = this.startOpts;
+      const freteCode = frete === 'FOB' ? 'F' : 'C';
+
+      // Sequence field updates to avoid concurrent AJAX/UI reset conflicts
+      const headerFields = [
+        { id: '#CJ_TPFRETE', value: freteCode },
+        { id: '#CJ_XTRANSP', value: transportadora || '000157' },
+        { id: '#CJ_XTPORC', value: '3' }, // Em elaboração
+      ];
+
+      for (const field of headerFields) {
+        await this.waitFor(
+          `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+          5000,
+        );
+
+        await this.evalRaw(`
+          (function() {
+            var el = jQuery(${JSON.stringify(field.id)});
+            if (el.length) {
+              el.val(${JSON.stringify(field.value)}).trigger('change');
+              el.focus().blur();
+            }
+          })();
+          'done'
+        `);
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      // Set modality and freight after the main header fields are stable.
+      await this.waitFor(
+        `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+        5000,
+      );
       await this.evalRaw(`
-        jQuery('#CJ_XTPORC').val('3').trigger('change');         // Em elaboração
-        jQuery('#CJ_TPFRETE').val('C').trigger('change');         // CIF
-        jQuery('#CJ_XTRANSP').val('000157').trigger('change');   // Expresso São Miguel
+        (function() {
+          var mod = jQuery('#CJ_XMODALI');
+          if (mod.length) {
+            mod.val('001').trigger('change');
+          }
+          var frete = jQuery('#CJ_FRETE');
+          if (frete.length) {
+            frete.val('0,00').trigger('change');
+          }
+          if (typeof recFrete === 'function') recFrete();
+          if (document.activeElement) document.activeElement.blur();
+        })();
         'done'
       `);
+
+      await this.waitFor(
+        `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+        10000,
+      );
+
+      await this.evalRaw(`
+        (function() {
+          var cond = jQuery('#CJ_CONDPAG');
+          if (cond.length) {
+            cond.val('031').trigger('change');
+            cond.focus().blur();
+          }
+        })();
+        'done'
+      `);
+      await this.waitFor(
+        `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+        10000,
+      );
     }
 
     return {
@@ -302,17 +381,49 @@ export class AutoAmericaDriver implements IPortalDriver {
     const n = pad(this.itemCount);
 
     if (this.itemCount > 1) {
-      await this.evalRaw(
-        `document.getElementById('btAddItm').click(); 'clicked'`,
+      // Robustly wait for any UI block to clear before clicking "Novo Item"
+      await this.waitFor(
+        `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+        10000,
       );
+
+      // Clear any previous error notifications or focus that might block the button
+      await this.evalRaw(`
+        (function() {
+          jQuery('.ui-pnotify-closer').click();
+          // Bootbox/Modal OK buttons
+          var ok = jQuery('.modal-dialog button[data-bb-handler="ok"], .modal-dialog button.btn-primary').filter(':visible');
+          if (ok.length) ok.click();
+          if (document.activeElement) document.activeElement.blur();
+        })();
+        'done'
+      `);
+
+      // Extra wait if we clicked a modal
+      await new Promise((r) => setTimeout(r, 500));
+
+      await this.evalRaw(`
+        (function() {
+          var btn = document.getElementById('btAddItm');
+          if (btn) {
+            btn.scrollIntoView();
+            btn.click();
+          }
+        })();
+        'clicked'
+      `);
+
+      // Wait for the new product field to exist
       const appeared = await this.waitFor(
         `document.getElementById('CK_PRODUTO${n}')`,
+        10000,
       );
+
       if (!appeared) {
         this.itemCount -= 1;
         return {
           status: 'error',
-          summary: `Linha ${n} não apareceu após clicar em Novo Item`,
+          summary: `Linha ${n} não apareceu após clicar em Novo Item. Verifique se há algum aviso de estoque ou erro travando a tela.`,
         };
       }
     }
@@ -322,17 +433,33 @@ export class AutoAmericaDriver implements IPortalDriver {
       `jQuery('#CK_PRODUTO${n}').val(${JSON.stringify(productCode)}).trigger('change'); 'done'`,
     );
 
+    // Wait for any portal-side background loading ("buscando produto") triggered by product selection
+    await this.waitFor(
+      `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+      10000,
+    );
+
     // Populate price field by calling U_GATPROD.APW directly (async:false).
     // jQuery .trigger('change') does NOT fire native onchange attributes, so
     // gatProduto() is never called automatically — we replicate its AJAX call here.
     const priceResult = await this.evalRaw(`
       (function() {
+        // First, check for any blocking modals (like out of stock) and clear them
+        var modalOk = jQuery('.modal-dialog button[data-bb-handler="ok"], .modal-dialog button.btn-primary').filter(':visible');
+        if (modalOk.length) {
+          modalOk.click();
+          // Small delay for modal animation
+          var start = Date.now(); while(Date.now() - start < 300) {}
+        }
+
         var pr = new URLSearchParams(location.search).get('PR') || '';
         var result = '';
+        var csrf = jQuery('input[name="CSRFToken"]').val() || '';
         jQuery.ajax({
           type: 'POST',
           url: 'U_GATPROD.APW' + (pr ? '?PR=' + encodeURIComponent(pr) : ''),
           data: {
+            CSRFToken:  csrf,
             produto:    ${JSON.stringify(productCode)},
             tabela:     jQuery('#CJ_TABELA').val() || '',
             cliente:    jQuery('#CJ_CLIENTE').val() || '',
@@ -346,7 +473,12 @@ export class AutoAmericaDriver implements IPortalDriver {
             if (!data || data.toUpperCase().indexOf('<META HTTP-EQUIV') >= 0) return;
             try {
               var oRet = JSON.parse(data);
-              if (oRet.erro) { result = '__ERROR__'; return; }
+              if (oRet.erro) {
+                // Check if the error is actually just a displayable message (like stock)
+                // and if it already triggered a modal, we might want to know.
+                result = '__ERROR__:' + (oRet.erro || 'Desconhecido');
+                return;
+              }
               var priceEl = document.getElementById('CK_XPRCIMP${n}');
               if (priceEl) priceEl.value = oRet.preco || '';
               var qtdEl = document.getElementById('QTD_EMB${n}');
@@ -361,24 +493,29 @@ export class AutoAmericaDriver implements IPortalDriver {
         return result;
       })()`);
 
-    if (priceResult === '__ERROR__') {
+    if (priceResult.startsWith('__ERROR__')) {
       this.itemCount -= 1;
       return {
         status: 'error',
-        summary: `Falha ao buscar preço do produto ${productCode} (U_GATPROD.APW)`,
+        summary: `Falha ao buscar preço do produto ${productCode}: ${priceResult.split(':')[1] || 'Erro na requisição U_GATPROD.APW'}`,
       };
     }
 
-    // Set quantity and trigger price recalculation
+    // Set quantity and trigger price recalculation using the portal's validation flow.
     await this.evalRaw(`
-      var q = document.getElementById('CK_QTDVEN${n}');
-      q.value = ${JSON.stringify(String(units))};
-      q.dispatchEvent(new Event('change', {bubbles:true}));
-      VldValor('${n}');
+      (function() {
+        var q = jQuery('#CK_QTDVEN${n}');
+        q.removeAttr('disabled');
+        q.val(${JSON.stringify(String(units))}).trigger('change');
+        q.focus().blur();
+        VldQtd('${n}');
+        TotalItem('${n}');
+        VldValor('${n}');
+      })();
       'done'
     `);
 
-    // VldValor may trigger async AJAX to compute CK_VALOR{n}; wait for it.
+    // Wait for the portal to compute the item total.
     await this.waitFor(
       `(document.getElementById('CK_VALOR${n}')?.value || '').replace(/[^0-9]/g,'') !== ''`,
       5000,
@@ -399,9 +536,9 @@ export class AutoAmericaDriver implements IPortalDriver {
       }
       if (!n) 'not_found';
       else {
-        var q = document.getElementById('CK_QTDVEN'+n);
-        q.value = ${JSON.stringify(String(units))};
-        q.dispatchEvent(new Event('change', {bubbles:true}));
+        var q = jQuery('#CK_QTDVEN'+n);
+        q.val(${JSON.stringify(String(units))}).trigger('change');
+        q.focus().blur();
         VldValor(n);
         'done'
       }
@@ -456,9 +593,10 @@ export class AutoAmericaDriver implements IPortalDriver {
       }
       if (!n) 'not_found';
       else {
-        var d = document.getElementById('CK_DESCONT'+n);
-        d.removeAttribute('disabled');
-        d.value = ${JSON.stringify(pct.toFixed(2).replace('.', ','))};
+        var d = jQuery('#CK_DESCONT'+n);
+        d.removeAttr('disabled');
+        d.val(${JSON.stringify(pct.toFixed(2).replace('.', ','))}).trigger('change');
+        d.focus().blur();
         VldValor(n);
         'ok'
       }
@@ -501,9 +639,28 @@ export class AutoAmericaDriver implements IPortalDriver {
         next_actions: ['Valores suportados: 30/60, 30/60/90'],
       };
     }
-    await this.evalRaw(
-      `jQuery('#CJ_CONDPAG').val(${JSON.stringify(code)}).trigger('change'); 'done'`,
+
+    // Wait for UI clear before setting (it may be busy computing totals)
+    await this.waitFor(
+      `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+      10000,
     );
+
+    await this.evalRaw(`
+      (function() {
+        var el = jQuery('#CJ_CONDPAG');
+        el.val(${JSON.stringify(code)}).trigger('change');
+        el.focus().blur();
+      })();
+      'done'
+    `);
+
+    // Recalculating totals often follows payment term change
+    await this.waitFor(
+      `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+      10000,
+    );
+
     return {
       status: 'success',
       summary: `Parcelas definidas: ${plan.label} (código ${code})`,
