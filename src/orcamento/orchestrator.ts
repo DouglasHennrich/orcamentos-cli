@@ -22,6 +22,7 @@ export interface RunOrcamentoInput {
   exportWriter: ExportWriter;
   interactive?: boolean;
   dryRun?: boolean;
+  screenshotPath?: string;
 }
 
 export interface RunOrcamentoResult {
@@ -47,6 +48,7 @@ export async function runOrcamento(
     exportWriter,
     interactive = true,
     dryRun = false,
+    screenshotPath,
   } = input;
 
   try {
@@ -265,6 +267,19 @@ export async function runOrcamento(
     total = (await driver.readOrderTotal()).data ?? total;
     const plan = platform.computeParcelas(total);
     await driver.setParcelas(plan);
+
+    if (screenshotPath) {
+      if (!driver.captureScreenshot) {
+        throw new Error('Driver não oferece suporte a captura de screenshot.');
+      }
+      const screenshotResult = await driver.captureScreenshot(screenshotPath);
+      if (screenshotResult.status === 'error') {
+        throw new Error(
+          `Falha ao capturar screenshot final: ${screenshotResult.summary}`,
+        );
+      }
+      console.log(`Screenshot final salvo em: ${screenshotPath}`);
+    }
 
     if (dryRun) {
       console.log(

@@ -843,6 +843,20 @@ export class RoberloDriver implements IPortalDriver {
     };
   }
 
+  async captureScreenshot(path: string): Promise<DriverResult> {
+    const result = await this.runner(['screenshot', path]);
+    if (result.code !== 0) {
+      return {
+        status: 'error',
+        summary: `Falha ao capturar screenshot: ${result.stderr.trim()}`,
+      };
+    }
+    return {
+      status: 'success',
+      summary: `Screenshot salvo em ${path}`,
+    };
+  }
+
   async exportQuote(): Promise<DriverResult<ExportedQuote>> {
     try {
       const data = await exportLastQuote((js) => this.evalRaw(js));

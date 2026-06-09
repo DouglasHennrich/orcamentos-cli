@@ -38,6 +38,7 @@ program
   )
   .option('--headed', 'Abre o browser visível (útil para debug)')
   .option('--dry-run', 'Simula sem salvar o orçamento no portal')
+  .option('--screenshot <path>', 'Captura screenshot final do pedido na página e salva em PNG')
   .action(
     async (opts: {
       order?: string[];
@@ -45,6 +46,7 @@ program
       db: string;
       headed?: boolean;
       dryRun?: boolean;
+      screenshot?: string;
     }) => {
       if (!opts.order || opts.order.length === 0) {
         console.error(
@@ -77,6 +79,7 @@ program
           interactive,
           ...(opts.headed ? { headed: true } : {}),
           ...(opts.dryRun ? { dryRun: true } : {}),
+          ...(opts.screenshot ? { screenshotPath: opts.screenshot } : {}),
         });
 
         // Show summary table

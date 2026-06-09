@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { dirname, extname, join, resolve } from 'node:path';
 import pLimit from 'p-limit';
 import { autoamerica } from '../platforms/autoamerica.js';
 import { roberlo } from '../platforms/roberlo.js';
@@ -23,6 +24,7 @@ export interface BatchOptions {
   interactive?: boolean;
   headed?: boolean;
   dryRun?: boolean;
+  screenshotPath?: string;
 }
 
 export interface BatchSummary {
@@ -39,6 +41,28 @@ export interface BatchSummary {
 interface OrderTask {
   label: string;
   data: unknown;
+}
+
+async function resolveScreenshotPath(
+  basePath: string,
+  label: string,
+): Promise<string> {
+  const resolved = resolve(basePath);
+  const ext = extname(resolved).toLowerCase();
+
+  try {
+    const stat = await fs.stat(resolved);
+    if (stat.isDirectory()) {
+      return join(resolved, `${label}.png`);
+    }
+  } catch {
+    // ignore; path may not exist yet
+  }
+
+  if (!ext) {
+    return join(resolved, `${label}.png`);
+  }
+  return resolved;
 }
 
 async function expandFiles(
@@ -111,6 +135,15 @@ async function processTask(
 
     const order = parseOrder(data);
 
+    let screenshotPath: string | undefined;
+    if (options.screenshotPath) {
+      screenshotPath = await resolveScreenshotPath(
+        options.screenshotPath,
+        task.label.replace(/[^a-zA-Z0-9-_]/g, '_'),
+      );
+      await fs.mkdir(dirname(screenshotPath), { recursive: true });
+    }
+
     const result = await runOrcamento({
       platform,
       client: order.client,
@@ -123,6 +156,7 @@ async function processTask(
       exportWriter: options.exportWriter,
       interactive: options.interactive ?? false,
       ...(options.dryRun ? { dryRun: true } : {}),
+      ...(screenshotPath ? { screenshotPath } : {}),
     });
 
     return { label: task.label, status: 'success', result };

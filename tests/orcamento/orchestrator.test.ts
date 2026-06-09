@@ -212,6 +212,33 @@ describe('runOrcamento', () => {
     expect(result.exportPath).toBe('(simulação)');
   });
 
+  it('captures a final screenshot when screenshotPath is provided', async () => {
+    const driver = priceModelDriver({ A: 3000 }) as unknown as IPortalDriver;
+    const screenshot = vi.fn(async () => ({ status: 'success' as const, summary: 'ok' }));
+    (driver as any).captureScreenshot = screenshot;
+
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+    const exportWriter = vi.fn(async () => '/out/autoamerica/CLIENTE STUB.pdf');
+    await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      ruleRepo: stubRuleRepo(),
+      exportWriter,
+      screenshotPath: '/tmp/final-pedido.png',
+    });
+
+    expect(screenshot).toHaveBeenCalledWith('/tmp/final-pedido.png');
+  });
+
   it('throws when the mandatory export fails', async () => {
     const driver = priceModelDriver({ A: 3000 });
     driver.exportQuote = vi.fn(async () => ({

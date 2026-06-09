@@ -80,6 +80,8 @@ export interface IPortalDriver {
   save(): Promise<DriverResult>;
   /** Exporta (baixa o PDF) do orçamento recém-criado, lendo a 1ª linha da listagem. */
   exportQuote(): Promise<DriverResult<ExportedQuote>>;
+  /** Captura screenshot da página atual para validação visual. */
+  captureScreenshot?(path: string): Promise<DriverResult>;
   /** Fecha recursos do driver (ex: encerrar processo do browser se aplicável). */
   close?(): Promise<void>;
 }
