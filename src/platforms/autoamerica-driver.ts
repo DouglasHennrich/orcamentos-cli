@@ -123,10 +123,21 @@ export class AutoAmericaDriver implements IPortalDriver {
     // Before running any jQuery based command, ensure jQuery is loaded.
     // Protheus/APW can be slow to inject scripts into the DOM.
     await this.waitFor(`typeof jQuery !== 'undefined'`, 10000);
+    await this.waitFor(
+      `typeof SelCliente === 'function' || document.getElementById('CJ_TABELA')`,
+      10000,
+    );
 
     await this.evalRaw(`
-      jQuery('#CJ_CLIENTE').val(${JSON.stringify(code)}).trigger('change');
-      SelCliente();
+      (function() {
+        var el = jQuery('#CJ_CLIENTE');
+        el.val(${JSON.stringify(code)}).trigger('change');
+        if (typeof SelCliente === 'function') {
+          SelCliente();
+        } else {
+          el.trigger('change');
+        }
+      })();
       'done'
     `);
 
@@ -170,9 +181,22 @@ export class AutoAmericaDriver implements IPortalDriver {
   }
 
   async selectPriceTable(code: string): Promise<DriverResult> {
+    await this.waitFor(`typeof jQuery !== 'undefined'`, 10000);
+    await this.waitFor(
+      `typeof selProd === 'function' || document.getElementById('CK_PRODUTO01')`,
+      10000,
+    );
+
     await this.evalRaw(`
-      jQuery('#CJ_TABELA').val(${JSON.stringify(code)}).trigger('change');
-      selProd();
+      (function() {
+        var el = jQuery('#CJ_TABELA');
+        el.val(${JSON.stringify(code)}).trigger('change');
+        if (typeof selProd === 'function') {
+          selProd();
+        } else {
+          el.trigger('change');
+        }
+      })();
       'done'
     `);
 
