@@ -1,25 +1,71 @@
 [
   {
     "provider": "autoamerica",
-    "client": "27178993000142",
+    "client": "Oliveira Oliveira",
     "produtos": [
       {
-        "name": "super polidor 1kg",
-        "quantity": "15 CX"
+        "name": "super polidor",
+        "quantity": "10 CX"
       },
       {
-        "name": "super polidor 4kg",
-        "quantity": "4 CX"
-      }
-    ]
-  },
-  {
-    "provider": "autoamerica",
-    "client": "12345678000195",
-    "produtos": [
+        "name": "boina amarela lã",
+        "quantity": "1 CX"
+      },
       {
-        "name": "super polidor 1kg",
-        "quantity": "10 CX"
+        "name": "low laranja, preto 150mm 6\"",
+        "quantity": "1 CX"
+      },
+      {
+        "name": "low cost laranja, amarela e preto 5\"",
+        "quantity": "1 CX"
+      },
+      {
+        "name": "boina fast cut 5,5\"",
+        "quantity": "1 CX"
+      },
+      {
+        "name": "boina 520MPF microfibra c/ interface preto 5,5\"",
+        "quantity": "1 CX"
+      },
+      {
+        "name": "suporte p boina 6\"",
+        "quantity": "1 CX"
+      },
+      {
+        "name": "triple wax 100gr",
+        "quantity": "2 CX"
+      },
+      {
+        "name": "triple wax 300gr",
+        "quantity": "1 CX"
+      },
+      {
+        "name": "extreme 1,5L",
+        "quantity": "1 CX"
+      },
+      {
+        "name": "tire gel",
+        "quantity": "1 CX"
+      },
+      {
+        "name": "fast cut 1kg",
+        "quantity": "2 CX"
+      },
+      {
+        "name": "aplicador de microfibra",
+        "quantity": "1 CX"
+      },
+      {
+        "name": "menzerna 3 in 1 250ml",
+        "quantity": "1 CX"
+      },
+      {
+        "name": "clay bar 100gr",
+        "quantity": "1 CX"
+      },
+      {
+        "name": "clay bar 50gr",
+        "quantity": "1 CX"
       }
     ]
   }
