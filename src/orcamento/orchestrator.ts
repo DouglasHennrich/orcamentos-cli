@@ -71,6 +71,16 @@ export async function runOrcamento(
           );
         }
       }
+      const thresholds = rules
+        .filter((r) => r.type === 'threshold-discount')
+        .sort((a, b) => (a.quantityValue ?? 0) - (b.quantityValue ?? 0));
+
+      if (thresholds.length > 0) {
+        const tiers = thresholds
+          .map((r) => `>=${r.quantityValue} cx -> ${r.discountPct}%`)
+          .join(', ');
+        console.log(`  - DESCONTO POR QUANTIDADE: ${tiers}`);
+      }
     }
 
     // Resolve after startQuote: browser is now on the quote form, so searchProducts
@@ -175,6 +185,24 @@ export async function runOrcamento(
       if (override) {
         if (override.discountPct !== undefined) {
           await driver.applyDiscount(l.productCode, override.discountPct);
+        }
+        continue;
+      }
+
+      // Rules: threshold-discount (min boxes tiers).
+      const thresholdRules = rules
+        .filter(
+          (r) =>
+            r.type === 'threshold-discount' &&
+            r.quantityValue !== undefined &&
+            b >= r.quantityValue,
+        )
+        .sort((a, b) => (b.discountPct ?? 0) - (a.discountPct ?? 0));
+
+      if (thresholdRules.length > 0) {
+        const bestTier = thresholdRules[0];
+        if (bestTier?.discountPct !== undefined) {
+          await driver.applyDiscount(l.productCode, bestTier.discountPct);
         }
         continue;
       }

@@ -29,10 +29,14 @@ export async function runRulesEditor(
         const status = r.enabled
           ? '[\x1b[32mATIVA\x1b[0m]'
           : '[\x1b[31mINATIVA\x1b[0m]';
-        const details =
-          r.type === 'add-product'
-            ? `Adicionar ${r.productCode} (${r.productName || '?'}) -> ${r.quantityValue} ${r.quantityUnit}`
-            : `Desconto fixo em ${r.productCode} (${r.productName || '?'}) -> ${r.discountPct}%`;
+        let details = '';
+        if (r.type === 'add-product') {
+          details = `Adicionar ${r.productCode} (${r.productName || '?'}) -> ${r.quantityValue} ${r.quantityUnit}`;
+        } else if (r.type === 'override-discount') {
+          details = `Desconto fixo em ${r.productCode} (${r.productName || '?'}) -> ${r.discountPct}%`;
+        } else if (r.type === 'threshold-discount') {
+          details = `Desconto por quantidade: >=${r.quantityValue} cx -> ${r.discountPct}%`;
+        }
         console.log(`${i + 1}. ${status} ${details}`);
       });
     }
@@ -87,10 +91,16 @@ async function pickRule(rules: any[]): Promise<number> {
   const select = new Select({
     name: 'rule',
     message: 'Selecione a regra:',
-    choices: rules.map((r, i) => ({
-      name: i.toString(),
-      message: `${r.productCode} (${r.type})`,
-    })),
+    choices: rules.map((r, i) => {
+      const label =
+        r.type === 'threshold-discount'
+          ? `>=${r.quantityValue} cx -> ${r.discountPct}%`
+          : r.productCode;
+      return {
+        name: i.toString(),
+        message: `${label} (${r.type})`,
+      };
+    }),
   });
   const res = await select.run();
   return parseInt(res, 10);
@@ -109,9 +119,52 @@ async function addRule(
         name: 'override-discount',
         message: 'Desconto Fixo (Sobrescrever automático)',
       },
+      {
+        name: 'threshold-discount',
+        message: 'Desconto por Quantidade (Global, por nivel de caixas)',
+      },
     ],
   });
-  const type = (await typeSelect.run()) as 'add-product' | 'override-discount';
+  const type = (await typeSelect.run()) as
+    | 'add-product'
+    | 'override-discount'
+    | 'threshold-discount';
+
+  if (type === 'threshold-discount') {
+    const minBoxesInput = new Input({
+      message: 'Mínimo de caixas para o desconto (>=):',
+      initial: '1',
+      validate: (val: string) => {
+        const n = parseInt(val, 10);
+        if (isNaN(n) || n < 1)
+          return 'Mínimo deve ser um número inteiro maior que 0';
+        return true;
+      },
+    });
+    const quantityValue = parseInt(await minBoxesInput.run(), 10);
+
+    const discInput = new Input({
+      message: 'Percentual de desconto (1-100):',
+      initial: '1',
+      validate: (val: string) => {
+        const n = parseInt(val, 10);
+        if (isNaN(n) || n < 1 || n > 100)
+          return 'O desconto deve ser entre 1 e 100%';
+        return true;
+      },
+    });
+    const discountPct = parseInt(await discInput.run(), 10);
+
+    repo.save({
+      provider,
+      type,
+      productCode: '*',
+      quantityValue,
+      discountPct,
+    });
+    console.log('\x1b[32mRegra de desconto por quantidade salva!\x1b[0m');
+    return;
+  }
 
   const codeInput = new Input({ message: 'Código do produto:' });
   const productCode = await codeInput.run();
@@ -171,9 +224,36 @@ async function editRule(repo: ProductRuleRepository, rule: any): Promise<void> {
     productCode: rule.productCode,
     productName: rule.productName,
     unitsPerBox: rule.unitsPerBox,
+    quantityValue: rule.quantityValue,
+    quantityUnit: rule.quantityUnit,
+    discountPct: rule.discountPct,
   };
 
-  if (rule.type === 'add-product') {
+  if (rule.type === 'threshold-discount') {
+    const minBoxesInput = new Input({
+      message: 'Novo mínimo de caixas para o desconto (>=):',
+      initial: rule.quantityValue.toString(),
+      validate: (val: string) => {
+        const n = parseInt(val, 10);
+        if (isNaN(n) || n < 1)
+          return 'Mínimo deve ser um número inteiro maior que 0';
+        return true;
+      },
+    });
+    input.quantityValue = parseInt(await minBoxesInput.run(), 10);
+
+    const discInput = new Input({
+      message: 'Novo percentual de desconto (1-100):',
+      initial: rule.discountPct.toString(),
+      validate: (val: string) => {
+        const n = parseInt(val, 10);
+        if (isNaN(n) || n < 1 || n > 100)
+          return 'O desconto deve ser entre 1 e 100%';
+        return true;
+      },
+    });
+    input.discountPct = parseInt(await discInput.run(), 10);
+  } else if (rule.type === 'add-product') {
     const valInput = new Input({
       message: 'Nova quantidade (número):',
       initial: rule.quantityValue.toString(),
