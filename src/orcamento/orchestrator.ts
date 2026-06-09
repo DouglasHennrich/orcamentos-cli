@@ -18,6 +18,7 @@ export interface RunOrcamentoInput {
   ruleRepo: ProductRuleRepository;
   exportWriter: ExportWriter;
   interactive?: boolean;
+  dryRun?: boolean;
 }
 
 export interface RunOrcamentoResult {
@@ -41,6 +42,7 @@ export async function runOrcamento(
     ruleRepo,
     exportWriter,
     interactive = true,
+    dryRun = false,
   } = input;
 
   try {
@@ -197,6 +199,14 @@ export async function runOrcamento(
     total = (await driver.readOrderTotal()).data ?? total;
     const plan = platform.computeParcelas(total);
     await driver.setParcelas(plan);
+
+    if (dryRun) {
+      console.log(
+        `\nSimulação concluída (não salvo). Total: R$ ${total.toFixed(2).replace('.', ',')}`,
+      );
+      return { total, parcelas: plan.label, exportPath: '(simulação)' };
+    }
+
     await driver.save();
 
     // Export obrigatório: baixa o PDF do orçamento recém-salvo da listagem.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toSiteUnits } from './quantity.js';
+import { toSiteUnits } from '../../src/orcamento/quantity.js';
 
 describe('toSiteUnits', () => {
   const upb = 6; // units per box

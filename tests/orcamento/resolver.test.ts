@@ -1,7 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { resolveLine } from '../../src/orcamento/resolver.js';
 import type { Prompter } from '../../src/io/prompt.js';
-import type { IPortalDriver, ProductOption } from '../../src/platforms/types.js';
+import type {
+  IPortalDriver,
+  ProductOption,
+} from '../../src/platforms/types.js';
 
 function stubDriver(options: ProductOption[]): IPortalDriver {
   return {
@@ -55,7 +58,11 @@ describe('resolveLine', () => {
   });
 
   it('on a miss, searches live, asks the user, persists, and converts', async () => {
-    const repo = { find: vi.fn(() => undefined), findFuzzy: vi.fn(() => undefined), save: vi.fn() };
+    const repo = {
+      find: vi.fn(() => undefined),
+      findFuzzy: vi.fn(() => undefined),
+      save: vi.fn(),
+    };
     const options = [{ code: '303535001', name: 'BRILHO RAP' }];
     const prompter: Prompter = {
       ask: vi.fn(async () => ''), // extra aliases: none
@@ -87,7 +94,11 @@ describe('resolveLine', () => {
   });
 
   it('persists extra aliases when provided', async () => {
-    const repo = { find: vi.fn(() => undefined), findFuzzy: vi.fn(() => undefined), save: vi.fn() };
+    const repo = {
+      find: vi.fn(() => undefined),
+      findFuzzy: vi.fn(() => undefined),
+      save: vi.fn(),
+    };
     const options = [{ code: '303535001', name: 'BRILHO RAP' }];
     const prompter: Prompter = {
       ask: vi.fn(async () => 'brilho mothers, mothers brilho'),
@@ -112,7 +123,11 @@ describe('resolveLine', () => {
   });
 
   it('uses readUnitsPerBox from driver when available, skips askInt', async () => {
-    const repo = { find: vi.fn(() => undefined), findFuzzy: vi.fn(() => undefined), save: vi.fn() };
+    const repo = {
+      find: vi.fn(() => undefined),
+      findFuzzy: vi.fn(() => undefined),
+      save: vi.fn(),
+    };
     const options = [{ code: '303535001', name: 'BRILHO RAP' }];
     const driver = {
       ...stubDriver(options),
@@ -141,7 +156,11 @@ describe('resolveLine', () => {
   });
 
   it('falls back to askInt when readUnitsPerBox returns undefined', async () => {
-    const repo = { find: vi.fn(() => undefined), findFuzzy: vi.fn(() => undefined), save: vi.fn() };
+    const repo = {
+      find: vi.fn(() => undefined),
+      findFuzzy: vi.fn(() => undefined),
+      save: vi.fn(),
+    };
     const options = [{ code: '303535001', name: 'BRILHO RAP' }];
     const driver = {
       ...stubDriver(options),
@@ -167,7 +186,11 @@ describe('resolveLine', () => {
   });
 
   it('re-searches when the user picks null then chooses', async () => {
-    const repo = { find: vi.fn(() => undefined), findFuzzy: vi.fn(() => undefined), save: vi.fn() };
+    const repo = {
+      find: vi.fn(() => undefined),
+      findFuzzy: vi.fn(() => undefined),
+      save: vi.fn(),
+    };
     const opts = [{ code: '1', name: 'A' }];
     const choose = vi
       .fn()

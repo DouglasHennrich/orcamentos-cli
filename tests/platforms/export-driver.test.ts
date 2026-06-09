@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { AutoAmericaDriver } from './autoamerica-driver.js';
-import { RoberloDriver } from './roberlo-driver.js';
-import type { AgentBrowserRunner, RunResult } from './agent-browser-runner.js';
+import { AutoAmericaDriver } from '../../src/platforms/autoamerica-driver.js';
+import { RoberloDriver } from '../../src/platforms/roberlo-driver.js';
+import type {
+  AgentBrowserRunner,
+  RunResult,
+} from '../../src/platforms/agent-browser-runner.js';
 
 // Reproduz a dupla serialização do agent-browser: a página retorna JSON.stringify(obj),
 // e o agent-browser serializa essa string de novo como JSON.
@@ -10,7 +13,11 @@ function enc(obj: unknown): string {
 }
 
 function runnerReturning(payload: unknown): AgentBrowserRunner {
-  return async (): Promise<RunResult> => ({ stdout: enc(payload), stderr: '', code: 0 });
+  return async (): Promise<RunResult> => ({
+    stdout: enc(payload),
+    stderr: '',
+    code: 0,
+  });
 }
 
 const okPayload = {
@@ -34,7 +41,11 @@ describe('AutoAmericaDriver.exportQuote', () => {
   });
 
   it('returns error status when the page reports an error', async () => {
-    const driver = new AutoAmericaDriver(runnerReturning({ error: 'listagem vazia' }), 'u', 'p');
+    const driver = new AutoAmericaDriver(
+      runnerReturning({ error: 'listagem vazia' }),
+      'u',
+      'p',
+    );
     const res = await driver.exportQuote();
     expect(res.status).toBe('error');
     expect(res.summary).toMatch(/listagem vazia/);

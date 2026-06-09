@@ -1,22 +1,12 @@
 #!/usr/bin/env node
 import 'dotenv/config';
-import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { program } from 'commander';
-import { parseOrder } from '../orcamento/order.js';
-import { runOrcamento } from '../orcamento/orchestrator.js';
 import { AliasRepository } from '../db/alias-repository.js';
 import { ProductRuleRepository } from '../db/product-rule-repository.js';
 import { ConsolePrompter } from '../io/prompt.js';
 import { makeExportWriter } from '../io/export-writer.js';
 import { runRulesEditor } from './rules-editor.js';
-import { realRunner } from '../platforms/agent-browser-runner.js';
-import { AutoAmericaDriver } from '../platforms/autoamerica-driver.js';
-import { RoberloDriver } from '../platforms/roberlo-driver.js';
-import { autoamerica } from '../platforms/autoamerica.js';
-import { roberlo } from '../platforms/roberlo.js';
-import type { Platform } from '../platforms/types.js';
-
 import { runBatch } from '../orcamento/batch-runner.js';
 import Table from 'cli-table3';
 
@@ -45,8 +35,16 @@ program
     'Caminho para o banco de dados de aliases',
     DEFAULT_DB_PATH,
   )
+  .option('--headed', 'Abre o browser visível (útil para debug)')
+  .option('--dry-run', 'Simula sem salvar o orçamento no portal')
   .action(
-    async (opts: { order?: string[]; concurrency: string; db: string }) => {
+    async (opts: {
+      order?: string[];
+      concurrency: string;
+      db: string;
+      headed?: boolean;
+      dryRun?: boolean;
+    }) => {
       if (!opts.order || opts.order.length === 0) {
         console.error(
           'Pelo menos um arquivo de pedido deve ser fornecido via --order',
@@ -60,7 +58,7 @@ program
       const exportWriter = makeExportWriter();
 
       const concurrency = parseInt(opts.concurrency, 10) || 3;
-      const interactive = opts.order.length === 1 && concurrency === 1;
+      const interactive = opts.order.length === 1;
 
       try {
         console.log(
@@ -74,6 +72,8 @@ program
           exportWriter,
           concurrency,
           interactive,
+          ...(opts.headed ? { headed: true } : {}),
+          ...(opts.dryRun ? { dryRun: true } : {}),
         });
 
         // Show summary table

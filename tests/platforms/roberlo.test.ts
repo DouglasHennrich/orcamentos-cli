@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { roberlo } from './roberlo.js';
+import { roberlo } from '../../src/platforms/roberlo.js';
 
 describe('roberlo config', () => {
   it('has the right constraints', () => {

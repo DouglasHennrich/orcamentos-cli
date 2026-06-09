@@ -5,7 +5,7 @@ import { rmSync } from 'node:fs';
 import {
   ProductRuleRepository,
   type CreateProductRuleInput,
-} from './product-rule-repository.js';
+} from '../../src/db/product-rule-repository.js';
 
 let dbPath: string;
 let repo: ProductRuleRepository;

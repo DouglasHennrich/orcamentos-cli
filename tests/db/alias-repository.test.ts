@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
-import { AliasRepository } from './alias-repository.js';
+import { AliasRepository } from '../../src/db/alias-repository.js';
 
 let dbPath: string;
 let repo: AliasRepository;
@@ -43,19 +43,43 @@ describe('AliasRepository', () => {
       productName: 'BRILHO RAP S/SIL MOTHERS 473ML',
       unitsPerBox: 6,
     });
-    expect(repo.find('autoamerica', 'Brilho Rapido')?.productCode).toBe('303535001');
-    expect(repo.find('autoamerica', 'brilho mothers')?.productCode).toBe('303535001');
-    expect(repo.find('autoamerica', 'mothers brilho')?.productCode).toBe('303535001');
+    expect(repo.find('autoamerica', 'Brilho Rapido')?.productCode).toBe(
+      '303535001',
+    );
+    expect(repo.find('autoamerica', 'brilho mothers')?.productCode).toBe(
+      '303535001',
+    );
+    expect(repo.find('autoamerica', 'mothers brilho')?.productCode).toBe(
+      '303535001',
+    );
   });
 
   it('scopes aliases by platform', () => {
-    repo.save({ platform: 'autoamerica', aliases: ['X'], productCode: '1', productName: 'n', unitsPerBox: 2 });
+    repo.save({
+      platform: 'autoamerica',
+      aliases: ['X'],
+      productCode: '1',
+      productName: 'n',
+      unitsPerBox: 2,
+    });
     expect(repo.find('roberlo', 'X')).toBeUndefined();
   });
 
   it('upserts on the same platform+alias', () => {
-    repo.save({ platform: 'roberlo', aliases: ['Y'], productCode: '1', productName: 'a', unitsPerBox: 2 });
-    repo.save({ platform: 'roberlo', aliases: ['Y'], productCode: '2', productName: 'b', unitsPerBox: 4 });
+    repo.save({
+      platform: 'roberlo',
+      aliases: ['Y'],
+      productCode: '1',
+      productName: 'a',
+      unitsPerBox: 2,
+    });
+    repo.save({
+      platform: 'roberlo',
+      aliases: ['Y'],
+      productCode: '2',
+      productName: 'b',
+      unitsPerBox: 4,
+    });
     expect(repo.find('roberlo', 'Y')?.productCode).toBe('2');
   });
 });

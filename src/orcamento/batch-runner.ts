@@ -50,7 +50,10 @@ async function expandFiles(
     try {
       parsed = JSON.parse(content);
     } catch {
-      errors?.push({ file: filePath, error: new Error(`Invalid JSON in ${filePath}`) });
+      errors?.push({
+        file: filePath,
+        error: new Error(`Invalid JSON in ${filePath}`),
+      });
       continue;
     }
     if (Array.isArray(parsed)) {

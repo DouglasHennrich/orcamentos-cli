@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { parseDropdownOptions, parseBRL, exportLastQuote } from './driver-helpers.js';
+import {
+  parseDropdownOptions,
+  parseBRL,
+  exportLastQuote,
+} from '../../src/platforms/driver-helpers.js';
 
 describe('parseBRL', () => {
   it('parses Brazilian currency', () => {
@@ -51,6 +55,8 @@ describe('parseDropdownOptions', () => {
     ]);
   });
   it('keeps the raw label as name when there is no " - " separator', () => {
-    expect(parseDropdownOptions(['MISC ITEM'])).toEqual([{ code: '', name: 'MISC ITEM' }]);
+    expect(parseDropdownOptions(['MISC ITEM'])).toEqual([
+      { code: '', name: 'MISC ITEM' },
+    ]);
   });
 });

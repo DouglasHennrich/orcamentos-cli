@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { autoamerica } from './autoamerica.js';
+import { autoamerica } from '../../src/platforms/autoamerica.js';
 
 describe('autoamerica config', () => {
   it('has the right constraints', () => {

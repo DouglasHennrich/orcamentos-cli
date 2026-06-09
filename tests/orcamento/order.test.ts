@@ -31,14 +31,25 @@ describe('parseOrder', () => {
       ],
     });
     expect(order.client).toBe('028766370');
-    expect(order.produtos[0]).toEqual({ name: 'Produto A', quantity: { value: 2, unit: 'UN' } });
-    expect(order.produtos[1]).toEqual({ name: 'Produto B', quantity: { value: 4, unit: 'CX' } });
-    expect(order.produtos[2]).toEqual({ name: 'Produto C', quantity: undefined });
+    expect(order.produtos[0]).toEqual({
+      name: 'Produto A',
+      quantity: { value: 2, unit: 'UN' },
+    });
+    expect(order.produtos[1]).toEqual({
+      name: 'Produto B',
+      quantity: { value: 4, unit: 'CX' },
+    });
+    expect(order.produtos[2]).toEqual({
+      name: 'Produto C',
+      quantity: undefined,
+    });
   });
   it('throws on missing client', () => {
     expect(() => parseOrder({ produtos: [] })).toThrow();
   });
   it('throws on invalid quantity', () => {
-    expect(() => parseOrder({ client: 'x', produtos: [{ name: 'A', quantity: 'abc' }] })).toThrow();
+    expect(() =>
+      parseOrder({ client: 'x', produtos: [{ name: 'A', quantity: 'abc' }] }),
+    ).toThrow();
   });
 });

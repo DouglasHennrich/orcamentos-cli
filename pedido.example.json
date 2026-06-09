@@ -1,13 +1,26 @@
-{
-  "client": "27178993000142",
-  "produtos": [
-    {
-      "name": "super polidor 1kg",
-      "quantity": "15 CX"
-    },
-    {
-      "name": "super polidor 4kg",
-      "quantity": "4 CX"
-    }
-  ]
-}
+[
+  {
+    "provider": "autoamerica",
+    "client": "27178993000142",
+    "produtos": [
+      {
+        "name": "super polidor 1kg",
+        "quantity": "15 CX"
+      },
+      {
+        "name": "super polidor 4kg",
+        "quantity": "4 CX"
+      }
+    ]
+  },
+  {
+    "provider": "autoamerica",
+    "client": "12345678000195",
+    "produtos": [
+      {
+        "name": "super polidor 1kg",
+        "quantity": "10 CX"
+      }
+    ]
+  }
+]

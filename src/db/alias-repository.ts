@@ -28,12 +28,7 @@ export class AliasRepository {
     this.db.exec(CREATE_ALIASES);
   }
 
-  find(platform: Platform, aliasRaw: string): AliasRecord | undefined {
-    const stmt = this.db.prepare(
-      'SELECT platform, alias_norm, alias_raw, product_code, product_name, units_per_box, created_at FROM aliases WHERE platform = ? AND alias_norm = ?',
-    );
-    const row = stmt.get(platform, normalizeAlias(aliasRaw)) as Record<string, unknown> | undefined;
-    if (!row) return undefined;
+  private mapRow(row: Record<string, unknown>): AliasRecord {
     return {
       platform: row.platform as Platform,
       aliasNorm: row.alias_norm as string,
@@ -43,6 +38,30 @@ export class AliasRepository {
       unitsPerBox: Number(row.units_per_box),
       createdAt: row.created_at as string,
     };
+  }
+
+  find(platform: Platform, aliasRaw: string): AliasRecord | undefined {
+    const stmt = this.db.prepare(
+      'SELECT platform, alias_norm, alias_raw, product_code, product_name, units_per_box, created_at FROM aliases WHERE platform = ? AND alias_norm = ?',
+    );
+    const row = stmt.get(platform, normalizeAlias(aliasRaw)) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? this.mapRow(row) : undefined;
+  }
+
+  findFuzzy(platform: Platform, terms: string): AliasRecord | undefined {
+    const words = normalizeAlias(terms).split(/\s+/).filter(Boolean);
+    if (words.length === 0) return undefined;
+    const stmt = this.db.prepare(
+      'SELECT platform, alias_norm, alias_raw, product_code, product_name, units_per_box, created_at FROM aliases WHERE platform = ?',
+    );
+    const rows = stmt.all(platform) as Record<string, unknown>[];
+    const match = rows.find((row) => {
+      const norm = row.alias_norm as string;
+      return words.every((w) => norm.includes(w));
+    });
+    return match ? this.mapRow(match) : undefined;
   }
 
   save(input: SaveAliasInput): void {

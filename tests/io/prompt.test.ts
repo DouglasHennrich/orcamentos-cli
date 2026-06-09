@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatOptions } from './prompt.js';
+import { formatOptions } from '../../src/io/prompt.js';
 
 describe('formatOptions', () => {
   it('numbers options from 1', () => {

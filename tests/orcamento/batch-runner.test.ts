@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'node:fs/promises';
-import { runBatch } from './batch-runner.js';
-import type { IPortalDriver } from '../platforms/types.js';
-import type { Prompter } from '../io/prompt.js';
+import { runBatch } from '../../src/orcamento/batch-runner.js';
+import type { IPortalDriver } from '../../src/platforms/types.js';
+import type { Prompter } from '../../src/io/prompt.js';
 
 vi.mock('node:fs/promises');
-vi.mock('./orchestrator.js', () => ({
+vi.mock('../../src/orcamento/orchestrator.js', () => ({
   runOrcamento: vi.fn(async ({ client }) => ({
     total: client === 'fail' ? 0 : 100,
     parcelas: '1x',
