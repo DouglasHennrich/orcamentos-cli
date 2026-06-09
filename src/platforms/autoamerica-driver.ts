@@ -3,6 +3,8 @@ import type {
   StartQuoteOpts,
   DriverResult,
   ProductOption,
+  ClientOption,
+  PriceTableOption,
   ParcelaPlan,
   ExportedQuote,
 } from './types.js';
@@ -24,6 +26,7 @@ function pad(n: number): string {
 
 export class AutoAmericaDriver implements IPortalDriver {
   private itemCount = 0;
+  private startOpts?: StartQuoteOpts;
 
   constructor(
     private readonly runner: AgentBrowserRunner,
@@ -85,7 +88,112 @@ export class AutoAmericaDriver implements IPortalDriver {
     return { status: 'success', summary: 'Login realizado no Auto America' };
   }
 
+  async searchClients(terms: string): Promise<DriverResult<ClientOption[]>> {
+    const data = await this.evalJson<ClientOption[]>(`
+      JSON.stringify(
+        (function() {
+          var words = ${JSON.stringify(terms.toLowerCase())}.split(/\\s+/).filter(Boolean);
+          return Array.from(document.getElementById('CJ_CLIENTE').options)
+            .filter(function(o) {
+              if (!o.value) return false;
+              var text = o.text.toLowerCase();
+              return words.every(function(w) { return text.includes(w); });
+            })
+            .slice(0, 50)
+            .map(function(o) { return {code: o.value, name: o.text}; });
+        })()
+      )
+    `);
+
+    if (data.length === 0) {
+      return {
+        status: 'warning',
+        summary: `Nenhum cliente encontrado para: "${terms}"`,
+        data: [],
+      };
+    }
+    return {
+      status: 'success',
+      summary: `${data.length} cliente(s) encontrado(s)`,
+      data,
+    };
+  }
+
+  async selectClient(code: string): Promise<DriverResult> {
+    await this.evalRaw(`
+      jQuery('#CJ_CLIENTE').val(${JSON.stringify(code)}).trigger('change');
+      SelCliente();
+      'done'
+    `);
+
+    const tabelasLoaded = await this.waitFor(
+      `document.getElementById('CJ_TABELA')?.options.length > 1`,
+      10000,
+    );
+    if (!tabelasLoaded) {
+      return {
+        status: 'error',
+        summary: 'Tabelas de preço não carregaram (SelCliente timeout)',
+      };
+    }
+
+    return {
+      status: 'success',
+      summary: 'Cliente selecionado com sucesso',
+    };
+  }
+
+  async listPriceTables(): Promise<DriverResult<PriceTableOption[]>> {
+    const data = await this.evalJson<PriceTableOption[]>(`
+      JSON.stringify(
+        Array.from(document.getElementById('CJ_TABELA').options)
+          .filter(function(o) { return !!o.value; })
+          .map(function(o) { return {code: o.value, name: o.text}; })
+      )
+    `);
+
+    return {
+      status: 'success',
+      summary: `${data.length} tabela(s) de preço encontrada(s)`,
+      data,
+    };
+  }
+
+  async selectPriceTable(code: string): Promise<DriverResult> {
+    await this.evalRaw(`
+      jQuery('#CJ_TABELA').val(${JSON.stringify(code)});
+      selProd();
+      'done'
+    `);
+
+    if (this.startOpts) {
+      await this.evalRaw(`
+        jQuery('#CJ_XTPORC').val('3').trigger('change');         // Em elaboração
+        jQuery('#CJ_TPFRETE').val('C').trigger('change');         // CIF
+        jQuery('#CJ_XTRANSP').val('000157').trigger('change');   // Expresso São Miguel
+        'done'
+      `);
+    }
+
+    const produtosLoaded = await this.waitFor(
+      `document.getElementById('CK_PRODUTO01')?.options.length > 1`,
+      10000,
+    );
+    if (!produtosLoaded) {
+      return {
+        status: 'error',
+        summary: 'Produtos não carregaram (selProd timeout)',
+      };
+    }
+
+    return {
+      status: 'success',
+      summary: 'Tabela de preços selecionada com sucesso',
+    };
+  }
+
   async startQuote(opts: StartQuoteOpts): Promise<DriverResult> {
+    this.startOpts = opts;
     // The orçamento URL carries a session-specific PR token — navigate via menu link,
     // not a hardcoded URL, to avoid 500 errors.
     await this.evalRaw(
@@ -105,84 +213,10 @@ export class AutoAmericaDriver implements IPortalDriver {
     );
     await this.waitLoad();
 
-    // Find client option value by searching CNPJ/name in pre-loaded options.
-    // The portal stores CNPJs as "027980912/0001 - NAME" (9-digit padded root + branch).
-    // Normalize: strip non-digits from the option text and match the first 8
-    // digits of the search term (the CNPJ company root) anywhere inside it.
-    const clientValue = await this.evalRaw(`
-      var term = ${JSON.stringify(opts.client)};
-      var termRoot = term.replace(/[^0-9]/g, '').substring(0, 8);
-      var opt = Array.from(document.getElementById('CJ_CLIENTE').options)
-        .find(o => {
-          var textDigits = o.text.replace(/[^0-9]/g, '');
-          return textDigits.includes(termRoot) || o.text.includes(term);
-        });
-      opt ? opt.value : ''
-    `);
-
-    if (!clientValue) {
-      return {
-        status: 'error',
-        summary: `Cliente não encontrado: ${opts.client}`,
-        next_actions: ['Verifique o CNPJ/nome do cliente'],
-      };
-    }
-
-    // 1. Select client and trigger SelCliente() which loads price tables via async AJAX.
-    await this.evalRaw(`
-      jQuery('#CJ_CLIENTE').val(${JSON.stringify(clientValue)});
-      SelCliente();
-      'done'
-    `);
-
-    // Wait for SelCliente() AJAX to populate CJ_TABELA options.
-    const tabelasLoaded = await this.waitFor(
-      `document.getElementById('CJ_TABELA')?.options.length > 1`,
-      10000,
-    );
-    if (!tabelasLoaded) {
-      return {
-        status: 'error',
-        summary: 'Tabelas de preço não carregaram (SelCliente timeout)',
-      };
-    }
-
-    // 2. Set price table and call selProd() which loads products via synchronous AJAX.
-    // opts.tabelaPrecos may be "099 - DESCRIÇÃO"; match by option value OR text.
-    const tabelaSearch = JSON.stringify(opts.tabelaPrecos ?? '099');
-    await this.evalRaw(`
-      var tSearch = ${tabelaSearch};
-      var tOpt = Array.from(document.getElementById('CJ_TABELA').options)
-        .find(o => o.value && (o.value === tSearch || o.text === tSearch || o.text.includes(tSearch) || tSearch.startsWith(o.value)));
-      jQuery('#CJ_TABELA').val(tOpt ? tOpt.value : tSearch);
-      selProd();
-      'done'
-    `);
-
-    // Wait for products to be populated (selProd uses async:false, but we verify anyway).
-    const produtosLoaded = await this.waitFor(
-      `document.getElementById('CK_PRODUTO01')?.options.length > 1`,
-      10000,
-    );
-    if (!produtosLoaded) {
-      return {
-        status: 'error',
-        summary: 'Produtos não carregaram (selProd timeout)',
-      };
-    }
-
-    // 3. Set remaining header fields.
-    await this.evalRaw(`
-      jQuery('#CJ_XTPORC').val('3').trigger('change');
-      jQuery('#CJ_TPFRETE').val('C').trigger('change');
-      jQuery('#CJ_XTRANSP').val('000157').trigger('change');
-      'done'
-    `);
-
     this.itemCount = 0;
     return {
       status: 'success',
-      summary: `Orçamento iniciado para ${opts.client}`,
+      summary: 'Orçamento preparado (aguardando seleção de cliente)',
     };
   }
 

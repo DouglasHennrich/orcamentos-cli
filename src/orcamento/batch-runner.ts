@@ -7,6 +7,7 @@ import { RoberloDriver } from '../platforms/roberlo-driver.js';
 import { realRunner, headedRunner } from '../platforms/agent-browser-runner.js';
 import type { Prompter } from '../io/prompt.js';
 import type { AliasRepository } from '../db/alias-repository.js';
+import type { ClientRepository } from '../db/client-repository.js';
 import type { ProductRuleRepository } from '../db/product-rule-repository.js';
 import type { ExportWriter } from '../io/export-writer.js';
 import { runOrcamento, type RunOrcamentoResult } from './orchestrator.js';
@@ -15,6 +16,7 @@ import { parseOrder } from './order.js';
 export interface BatchOptions {
   prompter: Prompter;
   repo: AliasRepository;
+  clientRepo: ClientRepository;
   ruleRepo: ProductRuleRepository;
   exportWriter: ExportWriter;
   concurrency?: number;
@@ -116,6 +118,7 @@ async function processTask(
       driver,
       prompter: options.prompter,
       repo: options.repo,
+      clientRepo: options.clientRepo,
       ruleRepo: options.ruleRepo,
       exportWriter: options.exportWriter,
       interactive: options.interactive ?? false,

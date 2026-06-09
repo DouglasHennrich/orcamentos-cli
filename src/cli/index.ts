@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { resolve } from 'node:path';
 import { program } from 'commander';
 import { AliasRepository } from '../db/alias-repository.js';
+import { ClientRepository } from '../db/client-repository.js';
 import { ProductRuleRepository } from '../db/product-rule-repository.js';
 import { ConsolePrompter } from '../io/prompt.js';
 import { makeExportWriter } from '../io/export-writer.js';
@@ -10,7 +11,7 @@ import { runRulesEditor } from './rules-editor.js';
 import { runBatch } from '../orcamento/batch-runner.js';
 import Table from 'cli-table3';
 
-const DEFAULT_DB_PATH = resolve(process.env.ALIAS_DB_PATH ?? 'aliases.db');
+const DEFAULT_DB_PATH = resolve(process.env.ORCAMENTO_DB ?? 'orcamentos.db');
 
 program
   .name('agent-orcamento')
@@ -53,6 +54,7 @@ program
       }
 
       const repo = new AliasRepository(opts.db);
+      const clientRepo = new ClientRepository(opts.db);
       const ruleRepo = new ProductRuleRepository(opts.db);
       const prompter = new ConsolePrompter();
       const exportWriter = makeExportWriter();
@@ -68,6 +70,7 @@ program
         const summary = await runBatch(opts.order, {
           prompter,
           repo,
+          clientRepo,
           ruleRepo,
           exportWriter,
           concurrency,

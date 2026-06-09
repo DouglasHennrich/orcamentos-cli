@@ -24,6 +24,16 @@ export interface ProductOption {
   name: string;
 }
 
+export interface ClientOption {
+  code: string;
+  name: string;
+}
+
+export interface PriceTableOption {
+  code: string;
+  name: string;
+}
+
 export interface ExportedQuote {
   /** Conteúdo do PDF do orçamento, codificado em base64. */
   pdfBase64: string;
@@ -34,7 +44,7 @@ export interface ExportedQuote {
 }
 
 export interface StartQuoteOpts {
-  client: string;
+  client?: string;
   tipo: string;
   tabelaPrecos?: string;
   transportadora: string;
@@ -50,6 +60,10 @@ export interface DriverResult<T = unknown> {
 
 export interface IPortalDriver {
   login(): Promise<DriverResult>;
+  searchClients?(terms: string): Promise<DriverResult<ClientOption[]>>;
+  selectClient?(code: string): Promise<DriverResult>;
+  listPriceTables?(): Promise<DriverResult<PriceTableOption[]>>;
+  selectPriceTable?(code: string): Promise<DriverResult>;
   startQuote(opts: StartQuoteOpts): Promise<DriverResult>;
   searchProducts(terms: string): Promise<DriverResult<ProductOption[]>>;
   /** Read units-per-box for a product directly from the portal. Optional: not all portals expose this. */

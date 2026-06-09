@@ -12,6 +12,18 @@ CREATE TABLE IF NOT EXISTS aliases (
 );
 `;
 
+export const CREATE_CLIENT_ALIASES = `
+CREATE TABLE IF NOT EXISTS client_aliases (
+  platform      TEXT NOT NULL,
+  alias_norm    TEXT NOT NULL,
+  alias_raw     TEXT NOT NULL,
+  client_code   TEXT NOT NULL,
+  client_name   TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  PRIMARY KEY (platform, alias_norm)
+);
+`;
+
 export const CREATE_PRODUCT_RULES = `CREATE TABLE IF NOT EXISTS product_rules (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   provider       TEXT NOT NULL,

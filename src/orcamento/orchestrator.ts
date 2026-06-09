@@ -3,10 +3,12 @@ import type { PlatformConfig, IPortalDriver } from '../platforms/types.js';
 import type { Prompter } from '../io/prompt.js';
 import type { OrderLine } from './order.js';
 import type { AliasRepository } from '../db/alias-repository.js';
+import type { ClientRepository } from '../db/client-repository.js';
 import type { ProductRuleRepository } from '../db/product-rule-repository.js';
 import type { ExportWriter } from '../io/export-writer.js';
 import { resolveLine, type ResolvedLine } from './resolver.js';
 import { toSiteUnits } from './quantity.js';
+import { resolveClient, resolvePriceTable } from './client-resolver.js';
 
 export interface RunOrcamentoInput {
   platform: PlatformConfig;
@@ -15,6 +17,7 @@ export interface RunOrcamentoInput {
   driver: IPortalDriver;
   prompter: Prompter;
   repo: AliasRepository;
+  clientRepo: ClientRepository;
   ruleRepo: ProductRuleRepository;
   exportWriter: ExportWriter;
   interactive?: boolean;
@@ -39,6 +42,7 @@ export async function runOrcamento(
     driver,
     prompter,
     repo,
+    clientRepo,
     ruleRepo,
     exportWriter,
     interactive = true,
@@ -48,13 +52,25 @@ export async function runOrcamento(
   try {
     await driver.login();
     await driver.startQuote({
-      client,
       tipo: platform.tipoOrcamento,
-      ...(platform.tabelaPrecos !== undefined
-        ? { tabelaPrecos: platform.tabelaPrecos }
-        : {}),
       transportadora: platform.transportadora,
       frete: platform.frete,
+    });
+
+    await resolveClient(client, {
+      driver,
+      platform,
+      prompter,
+      repo: clientRepo,
+      interactive,
+    });
+
+    await resolvePriceTable({
+      driver,
+      platform,
+      prompter,
+      repo: clientRepo,
+      interactive,
     });
 
     const rules = ruleRepo.listByProvider(platform.id).filter((r) => r.enabled);
