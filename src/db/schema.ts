@@ -12,8 +12,7 @@ CREATE TABLE IF NOT EXISTS aliases (
 );
 `;
 
-export const CREATE_PRODUCT_RULES = `
-CREATE TABLE IF NOT EXISTS product_rules (
+export const CREATE_PRODUCT_RULES = `CREATE TABLE IF NOT EXISTS product_rules (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   provider       TEXT NOT NULL,
   type           TEXT NOT NULL,
@@ -24,9 +23,14 @@ CREATE TABLE IF NOT EXISTS product_rules (
   quantity_unit  TEXT,
   discount_pct   INTEGER,
   enabled        INTEGER NOT NULL DEFAULT 1,
-  created_at     TEXT NOT NULL,
-  UNIQUE(provider, type, product_code)
+  created_at     TEXT NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rules_unique_tier 
+  ON product_rules(provider, type, product_code, quantity_value) 
+  WHERE quantity_value IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rules_unique_overlap 
+  ON product_rules(provider, type, product_code) 
+  WHERE quantity_value IS NULL;
 `;
 
 /** Normalizes an alias: lowercase, strip accents, collapse whitespace. */

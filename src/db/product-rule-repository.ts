@@ -5,7 +5,7 @@ import type { Platform } from '../platforms/types.js';
 export interface ProductRule {
   id: number;
   provider: Platform;
-  type: 'add-product' | 'override-discount';
+  type: 'add-product' | 'override-discount' | 'threshold-discount';
   productCode: string;
   productName?: string | undefined;
   unitsPerBox?: number | undefined;
@@ -40,13 +40,17 @@ export class ProductRuleRepository {
   }
 
   save(rule: CreateProductRuleInput): void {
+    const conflictTarget =
+      rule.quantityValue !== undefined && rule.quantityValue !== null
+        ? '(provider, type, product_code, quantity_value) WHERE quantity_value IS NOT NULL'
+        : '(provider, type, product_code) WHERE quantity_value IS NULL';
+
     const stmt = this.db.prepare(
       `INSERT INTO product_rules (provider, type, product_code, product_name, units_per_box, quantity_value, quantity_unit, discount_pct, enabled, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(provider, type, product_code) DO UPDATE SET
+       ON CONFLICT ${conflictTarget} DO UPDATE SET
          product_name = excluded.product_name,
          units_per_box = excluded.units_per_box,
-         quantity_value = excluded.quantity_value,
          quantity_unit = excluded.quantity_unit,
          discount_pct = excluded.discount_pct,
          enabled = excluded.enabled`,
@@ -82,7 +86,10 @@ export class ProductRuleRepository {
     return {
       id: Number(row.id),
       provider: row.provider as Platform,
-      type: row.type as 'add-product' | 'override-discount',
+      type: row.type as
+        | 'add-product'
+        | 'override-discount'
+        | 'threshold-discount',
       productCode: row.product_code as string,
       productName:
         row.product_name !== null ? (row.product_name as string) : undefined,

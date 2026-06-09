@@ -70,7 +70,7 @@ As a user, I want product-specific override-discount rules to always win over th
 
 - **FR-001**: The system MUST support a new rule type `threshold-discount` in the product rules editor.
 - **FR-002**: A `threshold-discount` rule MUST be scoped globally to a provider (not tied to a specific product code).
-- **FR-003**: The creation flow for `threshold-discount` MUST prompt only for minimum box count (integer > 0) and discount percentage (0–100); no product code prompt.
+- **FR-003**: The creation flow for `threshold-discount` MUST prompt only for minimum box count (integer > 0) and discount percentage (0–100); no product code prompt. Invalid values MUST display validation messages: min_boxes ≤ 0 → "Mínimo deve ser um número inteiro maior que 0"; duplicate tier → "Já existe uma regra com esse mínimo de caixas para este provider".
 - **FR-004**: Multiple `threshold-discount` rules MAY exist for the same provider as long as each has a different minimum box count.
 - **FR-005**: When evaluating discounts, the system MUST apply the highest `discount_pct` among all matching threshold rules for a product.
 - **FR-006**: The threshold comparison MUST be inclusive: a product with exactly the minimum box count qualifies.
@@ -78,23 +78,39 @@ As a user, I want product-specific override-discount rules to always win over th
 - **FR-008**: When a threshold rule applies, it MUST replace the platform's automatic discount (same behavior as override-discount).
 - **FR-009**: When no threshold matches and no override exists, the platform's automatic discount MUST run.
 - **FR-010**: The rules list MUST display threshold-discount rules in the format: `[ATIVA] Desconto por quantidade: >=N cx -> M%`.
-- **FR-011**: The schema for product rules MUST be updated to allow multiple rows per provider+type combination when `quantity_value` differs.
-- **FR-012**: The system MUST log active threshold-discount tiers at the start of each quote run (e.g., `DESCONTO POR QUANTIDADE: >=5 cx → 10%, >=10 cx → 15%`).
+- **FR-011**: The schema for product rules MUST be updated so that the uniqueness constraint becomes `UNIQUE(provider, type, product_code, quantity_value)`, replacing the existing `UNIQUE(provider, type, product_code)`. This allows multiple `threshold-discount` rows for the same provider (all with `product_code='*'`) differing only by `quantity_value`. The `save()` upsert logic MUST be updated to conflict on the new four-column key. Because this is a breaking schema change, the table MUST be dropped and recreated (acceptable per the Assumptions section).
+- **FR-012**: The system MUST log active threshold-discount tiers at the start of each quote run in interactive mode (e.g., `DESCONTO POR QUANTIDADE: >=5 cx → 10%, >=10 cx → 15%`). This log is suppressed when `interactive = false`.
 
 ### Key Entities
 
-- **ProductRule**: Represents a persistent rule applied automatically to quotes. For `threshold-discount`: `provider`, `type='threshold-discount'`, `product_code='*'`, `quantity_value` (min boxes), `discount_pct`, `enabled`.
+- **ProductRule**: Represents a persistent rule applied automatically to quotes. For `threshold-discount`: `provider`, `type='threshold-discount'`, `product_code='*'`, `quantity_value` (min boxes, integer > 0), `discount_pct` (integer 1–100; a value of 0 is disallowed as it would be a no-op), `enabled`. The TypeScript `type` union MUST be extended to include `'threshold-discount'`.
 - **Discount Priority Order**: `override-discount` (product-specific) > `threshold-discount` (highest matching tier) > platform auto-discount.
+- **Box Count for Threshold Evaluation**: The box count used for threshold evaluation is the **final** count after all minimum-value-loop bumps have been applied. If a product is bumped from 9 to 10 boxes during the minimum-value loop, it qualifies for a `>=10` threshold rule.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: A user can create a threshold-discount rule for any provider in under 30 seconds using the rules editor.
+- **SC-001**: A user can create a threshold-discount rule for any provider using the rules editor without needing to know a product code (UX goal; not enforced by automated tests).
 - **SC-002**: All products in a quote are evaluated against threshold rules independently — no product's discount is affected by another product's box count.
 - **SC-003**: When multiple tiers exist, the correct tier (highest matching discount) is applied 100% of the time.
 - **SC-004**: Products with an explicit override-discount are never affected by threshold rules.
 - **SC-005**: Quotes containing products both above and below the threshold correctly split discount application with no manual intervention.
+
+## Clarifications
+
+### Session 2026-06-09
+
+- Q: What validation message should display when min_boxes is 0 or non-integer? → A: "Mínimo deve ser um número inteiro maior que 0"
+- Q: What message should display when a duplicate tier (same provider + quantity_value) is attempted? → A: "Já existe uma regra com esse mínimo de caixas para este provider"
+
+## Out of Scope
+
+- Fractional discount percentages (e.g., 12.5%) — integer percentages only.
+- Time-limited or date-bounded discount tiers.
+- Per-customer or per-segment threshold rules.
+- Unit-based thresholds (the threshold is always in boxes, never in individual units).
+- Any platform other than those already supported (`autoamerica`, `roberlo`).
 
 ## Assumptions
 
@@ -103,3 +119,4 @@ As a user, I want product-specific override-discount rules to always win over th
 - The `quantity_unit` column is not used for `threshold-discount` rules and is stored as `NULL`.
 - Disabled rules (`enabled = false`) are excluded from discount evaluation.
 - The edit flow for an existing `threshold-discount` rule exposes only min boxes and discount % fields; `product_code` (`'*'`) is not editable.
+- A `discount_pct` of 0 is not a valid value for `threshold-discount` rules; validation MUST reject it (message: "O desconto deve ser entre 1 e 100%").

@@ -352,4 +352,180 @@ describe('runOrcamento', () => {
       }),
     ).rejects.toThrow(/modo não-interativo/i);
   });
+
+  describe('threshold-discount rules', () => {
+    it('applies threshold discount when box count meets minimum', async () => {
+      const driver = priceModelDriver({ A: 3000 });
+      const ruleRepo = stubRuleRepo([
+        {
+          type: 'threshold-discount',
+          productCode: '*',
+          quantityValue: 10,
+          discountPct: 15,
+          enabled: true,
+        },
+      ]);
+      const prompter: Prompter = {
+        ask: vi.fn(),
+        choose: vi.fn(),
+        askInt: vi.fn(),
+        askInts: vi.fn(),
+      };
+      await runOrcamento({
+        platform: autoamerica,
+        client: 'c',
+        orderLines: [orderLine('A', 10)],
+        driver: driver as unknown as IPortalDriver,
+        prompter,
+        repo: stubRepo(),
+        ruleRepo,
+        exportWriter: stubExportWriter(),
+      });
+      expect(driver.applyDiscount).toHaveBeenCalledWith('A', 15);
+    });
+
+    it('falls through to platform auto-discount when below threshold', async () => {
+      const driver = priceModelDriver({ A: 3000 });
+      const ruleRepo = stubRuleRepo([
+        {
+          type: 'threshold-discount',
+          productCode: '*',
+          quantityValue: 10,
+          discountPct: 15,
+          enabled: true,
+        },
+      ]);
+      const prompter: Prompter = {
+        ask: vi.fn(),
+        choose: vi.fn(),
+        askInt: vi.fn(),
+        askInts: vi.fn(),
+      };
+      await runOrcamento({
+        platform: autoamerica,
+        client: 'c',
+        orderLines: [orderLine('A', 9)],
+        driver: driver as unknown as IPortalDriver,
+        prompter,
+        repo: stubRepo(),
+        ruleRepo,
+        exportWriter: stubExportWriter(),
+      });
+      // Autoamerica auto-discount for 9 boxes is actually 0% in this mock config
+      // (only > 10 boxes get 15%).
+      expect(driver.applyDiscount).not.toHaveBeenCalled();
+    });
+
+    it('picks the highest matching tier when multiple tiers apply', async () => {
+      const driver = priceModelDriver({ A: 3000 });
+      const ruleRepo = stubRuleRepo([
+        {
+          type: 'threshold-discount',
+          productCode: '*',
+          quantityValue: 5,
+          discountPct: 10,
+          enabled: true,
+        },
+        {
+          type: 'threshold-discount',
+          productCode: '*',
+          quantityValue: 10,
+          discountPct: 20,
+          enabled: true,
+        },
+      ]);
+      const prompter: Prompter = {
+        ask: vi.fn(),
+        choose: vi.fn(),
+        askInt: vi.fn(),
+        askInts: vi.fn(),
+      };
+      await runOrcamento({
+        platform: autoamerica,
+        client: 'c',
+        orderLines: [orderLine('A', 12)],
+        driver: driver as unknown as IPortalDriver,
+        prompter,
+        repo: stubRepo(),
+        ruleRepo,
+        exportWriter: stubExportWriter(),
+      });
+      expect(driver.applyDiscount).toHaveBeenCalledWith('A', 20);
+    });
+
+    it('picks the lower matching tier when between tiers', async () => {
+      const driver = priceModelDriver({ A: 3000 });
+      const ruleRepo = stubRuleRepo([
+        {
+          type: 'threshold-discount',
+          productCode: '*',
+          quantityValue: 5,
+          discountPct: 10,
+          enabled: true,
+        },
+        {
+          type: 'threshold-discount',
+          productCode: '*',
+          quantityValue: 10,
+          discountPct: 20,
+          enabled: true,
+        },
+      ]);
+      const prompter: Prompter = {
+        ask: vi.fn(),
+        choose: vi.fn(),
+        askInt: vi.fn(),
+        askInts: vi.fn(),
+      };
+      await runOrcamento({
+        platform: autoamerica,
+        client: 'c',
+        orderLines: [orderLine('A', 7)],
+        driver: driver as unknown as IPortalDriver,
+        prompter,
+        repo: stubRepo(),
+        ruleRepo,
+        exportWriter: stubExportWriter(),
+      });
+      expect(driver.applyDiscount).toHaveBeenCalledWith('A', 10);
+      expect(driver.applyDiscount).not.toHaveBeenCalledWith('A', 20);
+    });
+
+    it('gives priority to override-discount over matching threshold', async () => {
+      const driver = priceModelDriver({ A: 3000 });
+      const ruleRepo = stubRuleRepo([
+        {
+          type: 'threshold-discount',
+          productCode: '*',
+          quantityValue: 10,
+          discountPct: 20,
+          enabled: true,
+        },
+        {
+          type: 'override-discount',
+          productCode: 'A',
+          discountPct: 5,
+          enabled: true,
+        },
+      ]);
+      const prompter: Prompter = {
+        ask: vi.fn(),
+        choose: vi.fn(),
+        askInt: vi.fn(),
+        askInts: vi.fn(),
+      };
+      await runOrcamento({
+        platform: autoamerica,
+        client: 'c',
+        orderLines: [orderLine('A', 15)],
+        driver: driver as unknown as IPortalDriver,
+        prompter,
+        repo: stubRepo(),
+        ruleRepo,
+        exportWriter: stubExportWriter(),
+      });
+      expect(driver.applyDiscount).toHaveBeenCalledWith('A', 5);
+      expect(driver.applyDiscount).not.toHaveBeenCalledWith('A', 20);
+    });
+  });
 });
