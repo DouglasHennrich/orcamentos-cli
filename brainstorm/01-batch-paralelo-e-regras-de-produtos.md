@@ -80,3 +80,44 @@ Regras são scoped por provider. Aplicadas automaticamente (sem confirmação). 
 - O editor interativo de regras deve usar o mesmo `ConsolePrompter` existente ou uma lib de menus mais rica (ex: `inquirer`)?
 - Quando múltiplos orçamentos em paralelo usam o mesmo browser agent, há alguma limitação de concorrência? (ex: max N instâncias simultâneas)
 - Regras `add-product` devem participar do loop de valor mínimo (bump) ou são apenas adicionadas como estão?
+
+---
+
+## Revisita: 2026-06-09
+
+### Updated Problem Framing
+
+O sistema de `override-discount` exige uma regra por produto para aplicar desconto por quantidade — impraticável quando a lógica de desconto é uniforme ("qualquer produto com >= X caixas recebe Y% de desconto"). Precisamos de um novo tipo de regra que aplique descontos automaticamente a qualquer produto do pedido com base na quantidade de caixas.
+
+### New Approaches Considered
+
+#### A: `threshold-discount` global por provider (Escolhido)
+- Pros: Uma regra cobre todos os produtos; múltiplos níveis (tiers) por provider; semântica clara — regra de negócio não é por produto, é por volume
+- Cons: Não permite threshold diferente por produto (considerado fora de escopo)
+
+#### B: `threshold-discount` por produto específico
+- Pros: Mais granular
+- Cons: Retorna ao problema original (uma regra por produto); torna o schema mais complexo sem ganho real
+
+#### C: Estender `override-discount` com campo de threshold
+- Pros: Menos tipos novos
+- Cons: Semântica confusa; `override-discount` hoje exige `product_code` específico; misturar conceitos seria tech debt
+
+### Updated Decision
+
+Novo tipo de regra `threshold-discount` com as seguintes características:
+
+- **Escopo global por provider**: `product_code = '*'` (sentinel)
+- **Threshold inclusivo**: produto com exatamente `quantity_value` caixas qualifica
+- **Múltiplos tiers**: vários rows com `quantity_value` diferente são permitidos (UNIQUE constraint atualizada para incluir `quantity_value`)
+- **Resolução de conflito**: quando múltiplos tiers são atendidos, aplica o maior `discount_pct`
+- **Prioridade**: `override-discount` (produto específico) > `threshold-discount` > desconto automático da plataforma
+
+Schema: tabela `product_rules` **resetada** (DROP + CREATE no constructor do repository). Sem migration.
+
+Spec completo em: `docs/superpowers/specs/2026-06-09-threshold-discount-rule-design.md`
+
+### Open Threads
+
+- Tiers de threshold devem ser exibidos agrupados no log de início do run (ex: `DESCONTO POR QUANTIDADE: >=5 cx -> 10%, >=10 cx -> 15%`)
+- O campo `quantity_unit` para `threshold-discount` é armazenado como `NULL`
