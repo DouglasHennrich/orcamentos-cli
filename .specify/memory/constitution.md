@@ -1,50 +1,56 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report:
+- Version change: N/A → 1.0.0
+- List of modified principles:
+    - [PRINCIPLE_1_NAME] → I. Spec-First & Plan-First
+    - [PRINCIPLE_2_NAME] → II. Driver-Based Portals Automation
+    - [PRINCIPLE_3_NAME] → III. Test-Driven Development (NON-NEGOTIABLE)
+    - [PRINCIPLE_4_NAME] → IV. Result Pattern & Errors Management
+    - [PRINCIPLE_5_NAME] → V. Domain & IO Separation
+- Added sections: Tech Stack & Portals Constraints, Quality Gates & Workflow
+- Templates requiring updates: 
+    - ✅ .specify/templates/plan-template.md updated
+    - ✅ .specify/templates/tasks-template.md updated
+- Follow-up TODOs: None.
+-->
+
+# Orcamento CLI Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Spec-First & Plan-First
+Documentation precedes implementation. Every feature MUST have a `spec.md` and `plan.md` in the `specs/` or `docs/superpowers/` directory. No code changes are allowed without an approved plan that defines data models and technical discovery.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Driver-Based Portals Automation
+Portal interactions MUST be encapsulated in driver classes (`src/platforms`). Drivers handle legacy front-end quirks like session tokens (PR), `dispatchEvent` vs `trigger('change')`, and DOM manipulation. Domain logic MUST NOT leak into browser automation scripts.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. Test-Driven Development (NON-NEGOTIABLE)
+TDD is mandatory. Write tests that fail first, then implement to satisfy them. Unit tests are required for all budget calculation and product rules logic. Integration tests are required for database and portal driver communication.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. Result Pattern & Errors Management
+All services and repositories MUST use the Result pattern (returning `{ ok: true, data }` or `{ ok: false, error }`). Exceptions are for unexpected infrastructure failures only. This ensures explicit handling of business-level failures (e.g., product out of stock).
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. Domain & IO Separation
+CLI commands (`src/cli`) only handle input gathering and orchestration. Core domain logic resides in `src/orcamento`. External IO (exports, writing to files, console prompts) must be isolated in `src/io` to ensure testability of the core logic without side effects.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+## Tech Stack & Portals Constraints
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+- **Session PR**: Always extract session tokens dynamically from the URL; never hardcode session IDs.
+- **Legacy Browser Events**: Prefer native `dispatchEvent` for elements with `onchange="..."` attributes to avoid jQuery's `trigger` limitations.
+- **Persistence**: Use structured repositories for local quote caching and product rules management.
+- **Local LLM Integration**: Utilize local Ollama (qwen2.5:14b) for intelligent client resolution and product matching.
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+## Quality Gates & Workflow
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+- **Tasks**: Sequential execution via `tasks.md` is required for multi-step features.
+- **Validation**: Every modification to a portal driver must be accompanied by a technical discovery document or an update to `docs/portais-tecnicos.md`.
+- **Verification**: Run `pnpm test` and `pnpm lint` after every major task to ensure no regressions.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+- This Constitution is the ultimate authority for development practices in this project.
+- Amendments require a clear rationale and an update to this document.
+- All Pull Requests and implementation phases must be reviewed against these principles.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-06-09 | **Last Amended**: 2026-06-09
+
