@@ -35,7 +35,7 @@ O operador executa um orçamento com um produto cujo nome não está no banco de
 **Acceptance Scenarios**:
 
 1. **Given** produto não está no banco de aliases, **When** o sistema busca no portal e retorna resultados, **Then** exibe lista numerada sem a opção "0) Nenhum / buscar de novo".
-2. **Given** a lista de resultados está exibida, **When** o operador digita `0` ou um número inválido, **Then** o sistema solicita diretamente novos termos de busca, sem etapa intermediária.
+2. **Given** a lista de resultados está exibida, **When** o operador digita `0`, **Then** o sistema solicita diretamente novos termos de busca, sem etapa intermediária. Quando o operador digita um número fora do intervalo válido, o sistema solicita nova escolha dentro da lista atual.
 3. **Given** a lista de resultados está exibida, **When** o operador escolhe um número válido, **Then** o sistema salva o alias (apenas com o nome original do pedido) e continua sem perguntar por nomes adicionais.
 4. **Given** a busca no portal retorna zero resultados, **When** o sistema exibe a mensagem de sem resultados, **Then** solicita novos termos de busca diretamente.
 
@@ -77,14 +77,14 @@ O operador executa um orçamento e resolve interativamente um produto não encon
 **Issue 2 — Fluxo produto não encontrado**
 
 - **FR-004**: O método `choose()` do `ConsolePrompter` NÃO DEVE exibir a opção "0) Nenhum / buscar de novo" na lista de opções.
-- **FR-005**: Quando o operador digitar `0` ou um valor inválido em `choose()`, o método DEVE retornar `null` e o `resolver.ts` DEVE solicitar diretamente novos termos de busca.
+- **FR-005**: Quando o operador digitar `0` em `choose()`, o método DEVE retornar `null` e o `resolver.ts` DEVE solicitar diretamente novos termos de busca. Entrada fora do intervalo válido (mas diferente de 0) DEVE exibir "Opção inválida" e repetir a seleção dentro da lista atual.
 - **FR-006**: O bloco que pergunta "Outros nomes para este produto" DEVE ser removido de `resolver.ts`. O alias DEVE ser salvo usando apenas `[line.name]` como identificador.
 
 **Issue 3 — Produtos descobertos**
 
 - **FR-007**: O `orchestrator.ts` DEVE registrar no log, antes de cada chamada a `driver.addLine()`, se o produto veio do cache de aliases ou foi descoberto interativamente no run atual.
 - **FR-008**: O sistema DEVE garantir que produtos resolvidos interativamente sejam incluídos no preenchimento do orçamento no portal, da mesma forma que produtos já conhecidos.
-- **FR-009**: Falhas em `driver.addLine()` para produtos descobertos DEVEM ser registradas no log com identificação do produto (código e nome), sem interromper silenciosamente o preenchimento dos demais produtos.
+- **FR-009**: Falhas em `driver.addLine()` para produtos descobertos DEVEM ser registradas no log com identificação do produto (código e nome), sem interromper o preenchimento dos demais produtos. O resumo final do run DEVE exibir a contagem de produtos que falharam ao ser adicionados.
 
 ## Success Criteria *(mandatory)*
 
@@ -94,6 +94,13 @@ O operador executa um orçamento e resolve interativamente um produto não encon
 - **SC-002**: O fluxo de resolução de produto não encontrado requer no mínimo uma interação a menos do que o fluxo anterior (remoção da seleção "0) Nenhum").
 - **SC-003**: Produtos resolvidos interativamente durante o run aparecem no orçamento preenchido no portal com a mesma taxa de sucesso dos produtos já conhecidos.
 - **SC-004**: Quando `addLine` falha para qualquer produto, o log contém a identificação do produto e o motivo da falha — zero falhas silenciosas.
+
+## Clarifications
+
+### Session 2026-06-09
+
+- Q: Quando `addLine` falha para um produto descoberto, o run deve abortar, continuar silenciosamente ou continuar com resumo de avisos? → A: Continuar o run e logar conforme FR-009; exibir contagem de avisos no resumo final do run para que o operador saiba sem interromper o fluxo.
+- Q: FR-003 — o `roberlo-driver.ts` tem a mesma lacuna de `.trigger('change')` na `selectPriceTable` do AutoAmerica? → A: Não — o Roberlo já chama `.trigger('change')` em `selectPriceTable`. FR-003 exige apenas verificação; alteração só se a inspeção revelar lacuna similar.
 
 ## Assumptions
 

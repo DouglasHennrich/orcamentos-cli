@@ -163,6 +163,10 @@ export class RoberloDriver implements IPortalDriver {
       'done'
     `);
 
+    // Wait for product options to load before setting Modalidade/Frete/Transportadora
+    // so these fields are not reset by any AJAX triggered by table selection.
+    await new Promise((r) => setTimeout(r, 500));
+
     if (this.startOpts) {
       await this.evalRaw(`
         jQuery('#CJ_XTPORC').val('2').trigger('change');         // Previsto
@@ -172,8 +176,6 @@ export class RoberloDriver implements IPortalDriver {
       `);
     }
 
-    // In Roberlo, selecting a table triggers loading product options for that slot
-    await new Promise((r) => setTimeout(r, 500));
     return {
       status: 'success',
       summary: `Tabela de preço ${code} selecionada`,

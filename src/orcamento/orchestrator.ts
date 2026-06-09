@@ -136,18 +136,32 @@ export async function runOrcamento(
           unitsPerBox: rule.unitsPerBox || 1,
           siteUnits: ruleUnits,
           boxes: Math.ceil(ruleUnits / (rule.unitsPerBox || 1)),
+          resolvedFrom: 'cache',
         });
       }
     }
 
     // Add all lines in units.
     const boxes = new Map<string, number>();
+    const addLineFailures: string[] = [];
     for (const l of lines) {
-      await driver.addLine(l.productCode, l.siteUnits);
+      console.log(
+        `Adicionando ${l.productCode} (${l.productName}) [origem: ${l.resolvedFrom ?? 'cache'}]`,
+      );
+      const addResult = await driver.addLine(l.productCode, l.siteUnits);
+      if (addResult.status === 'error') {
+        console.warn(
+          `Aviso: falha ao adicionar produto ${l.productCode} (${l.productName}): ${addResult.summary}`,
+        );
+        addLineFailures.push(`${l.productCode} - ${l.productName}`);
+        continue;
+      }
       boxes.set(l.productCode, l.boxes);
     }
 
     // Minimum-value loop: ask the user which line to bump (1 box per step).
+    // Only consider lines that were successfully added (present in boxes map).
+    const addedLines = lines.filter((l) => boxes.has(l.productCode));
     let total = (await driver.readOrderTotal()).data ?? 0;
     let iterations = 0;
     while (total < platform.minOrderValue) {
@@ -165,7 +179,7 @@ export async function runOrcamento(
         `Total ${total.toFixed(2)} < mínimo ${
           platform.minOrderValue
         }. Qual produto aumentar (1 caixa)?\n` +
-          lines
+          addedLines
             .map(
               (l, i) =>
                 `${i + 1}) ${l.productCode} - ${l.productName} (${boxes.get(l.productCode)} cx)`,
@@ -174,7 +188,7 @@ export async function runOrcamento(
       );
       let anyValid = false;
       for (const idx of indices) {
-        const target = lines[idx - 1];
+        const target = addedLines[idx - 1];
         if (!target) continue;
         const newBoxes = (boxes.get(target.productCode) ?? 0) + 1;
         boxes.set(target.productCode, newBoxes);
@@ -189,8 +203,16 @@ export async function runOrcamento(
       }
     }
 
-    // Discounts.
+    if (addLineFailures.length > 0) {
+      console.warn(
+        `\nAtenção: ${addLineFailures.length} produto(s) não foram adicionados ao orçamento:\n` +
+          addLineFailures.map((p) => `  - ${p}`).join('\n'),
+      );
+    }
+
+    // Discounts — only for products successfully added.
     for (const l of lines) {
+      if (!boxes.has(l.productCode)) continue;
       const b = boxes.get(l.productCode) ?? 0;
 
       // Rules: override-discount takes precedence.

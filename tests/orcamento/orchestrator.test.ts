@@ -328,6 +328,38 @@ describe('runOrcamento', () => {
     ).rejects.toThrow(/requer intervenção manual/i);
   });
 
+  it('continues processing other products when addLine fails for one', async () => {
+    const driver = priceModelDriver({ A: 3000, B: 3000 });
+    driver.addLine = vi.fn(async (code: string) => {
+      if (code === 'A') return { status: 'error' as const, summary: 'Falha produto A' };
+      driver._units[code] = 6;
+      return { status: 'success' as const, summary: '' };
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+    await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1), orderLine('B', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      ruleRepo: stubRuleRepo(),
+      exportWriter: stubExportWriter(),
+    });
+    expect(driver.addLine).toHaveBeenCalledWith('A', 6);
+    expect(driver.addLine).toHaveBeenCalledWith('B', 6);
+    // B should still have discount logic applied; A should not (not in boxes map)
+    expect(driver.applyDiscount).not.toHaveBeenCalledWith('A', expect.anything());
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('1 produto'));
+    warnSpy.mockRestore();
+  });
+
   it('throws in non-interactive mode when alias missing', async () => {
     const driver = priceModelDriver({});
     const repo = stubRepo();

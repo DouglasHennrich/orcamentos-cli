@@ -74,7 +74,7 @@ export class ConsolePrompter implements Prompter {
   }
 
   async choose(question: string, options: ProductOption[]): Promise<ProductOption | null> {
-    output.write(`${question}\n${formatOptions(options)}\n0) Nenhum / buscar de novo\n`);
+    output.write(`${question}\n${formatOptions(options)}\n`);
     for (;;) {
       const raw = await this.ask('Escolha o número:');
       const n = Number(raw);

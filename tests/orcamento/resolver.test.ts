@@ -54,6 +54,7 @@ describe('resolveLine', () => {
     expect(resolved.productCode).toBe('303535001');
     expect(resolved.siteUnits).toBe(24); // 4 boxes * 6 units/box
     expect(resolved.boxes).toBe(4);
+    expect(resolved.resolvedFrom).toBe('cache');
     expect(repo.save).not.toHaveBeenCalled();
   });
 
@@ -65,7 +66,7 @@ describe('resolveLine', () => {
     };
     const options = [{ code: '303535001', name: 'BRILHO RAP' }];
     const prompter: Prompter = {
-      ask: vi.fn(async () => ''), // extra aliases: none
+      ask: vi.fn(),
       choose: vi.fn(async () => options[0] as ProductOption | null),
       askInt: vi.fn(async () => 6),
       askInts: vi.fn(),
@@ -81,6 +82,7 @@ describe('resolveLine', () => {
       prompter,
     });
     expect(prompter.choose).toHaveBeenCalled();
+    expect(prompter.ask).not.toHaveBeenCalled();
     expect(repo.save).toHaveBeenCalledWith(
       expect.objectContaining({
         platform: 'autoamerica',
@@ -89,11 +91,12 @@ describe('resolveLine', () => {
         unitsPerBox: 6,
       }),
     );
+    expect(resolved.resolvedFrom).toBe('interactive');
     expect(resolved.siteUnits).toBe(2); // UN passes through
     expect(resolved.boxes).toBe(1); // ceil(2/6) = 1
   });
 
-  it('persists extra aliases when provided', async () => {
+  it('saves alias with only the original product name (no extra aliases)', async () => {
     const repo = {
       find: vi.fn(() => undefined),
       findFuzzy: vi.fn(() => undefined),
@@ -101,7 +104,7 @@ describe('resolveLine', () => {
     };
     const options = [{ code: '303535001', name: 'BRILHO RAP' }];
     const prompter: Prompter = {
-      ask: vi.fn(async () => 'brilho mothers, mothers brilho'),
+      ask: vi.fn(),
       choose: vi.fn(async () => options[0] as ProductOption | null),
       askInt: vi.fn(async () => 6),
       askInts: vi.fn(),
@@ -117,9 +120,10 @@ describe('resolveLine', () => {
     );
     expect(repo.save).toHaveBeenCalledWith(
       expect.objectContaining({
-        aliases: ['Produto A', 'brilho mothers', 'mothers brilho'],
+        aliases: ['Produto A'],
       }),
     );
+    expect(prompter.ask).not.toHaveBeenCalled();
   });
 
   it('uses readUnitsPerBox from driver when available, skips askInt', async () => {
@@ -135,7 +139,7 @@ describe('resolveLine', () => {
     };
     const askInt = vi.fn(async () => 6);
     const prompter: Prompter = {
-      ask: vi.fn(async () => ''),
+      ask: vi.fn(),
       choose: vi.fn(async () => options[0] as ProductOption | null),
       askInt,
       askInts: vi.fn(),
@@ -168,7 +172,7 @@ describe('resolveLine', () => {
     };
     const askInt = vi.fn(async () => 8);
     const prompter: Prompter = {
-      ask: vi.fn(async () => ''),
+      ask: vi.fn(),
       choose: vi.fn(async () => options[0] as ProductOption | null),
       askInt,
       askInts: vi.fn(),
@@ -198,8 +202,7 @@ describe('resolveLine', () => {
       .mockResolvedValueOnce(opts[0]!); // second: pick
     const ask = vi
       .fn()
-      .mockResolvedValueOnce('a') // re-search terms
-      .mockResolvedValueOnce(''); // extra aliases: none
+      .mockResolvedValueOnce('a'); // re-search terms only (no extra aliases prompt)
     const prompter: Prompter = {
       ask,
       choose,
@@ -216,6 +219,7 @@ describe('resolveLine', () => {
       },
     );
     expect(choose).toHaveBeenCalledTimes(2);
+    expect(ask).toHaveBeenCalledTimes(1); // only re-search terms, no extra aliases
     expect(resolved.siteUnits).toBe(3); // not informed -> one box (unitsPerBox=3)
   });
 });

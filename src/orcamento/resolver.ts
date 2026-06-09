@@ -12,6 +12,7 @@ export interface ResolvedLine {
   requested?: OrderLine['quantity'];
   siteUnits: number;
   boxes: number;
+  resolvedFrom: 'cache' | 'interactive';
 }
 
 export interface ResolveDeps {
@@ -68,21 +69,14 @@ export async function resolveLine(
         (await prompter.askInt(
           `Quantas unidades = 1 caixa de "${picked.name}"?`,
         ));
-      const extraRaw = await prompter.ask(
-        `Outros nomes para este produto (separados por vírgula, ou Enter para pular):`,
-      );
-      const extras = extraRaw
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
       repo.save({
         platform,
-        aliases: [line.name, ...extras],
+        aliases: [line.name],
         productCode: picked.code,
         productName: picked.name,
         unitsPerBox,
       });
-      return build(line, picked.code, picked.name, unitsPerBox);
+      return build(line, picked.code, picked.name, unitsPerBox, 'interactive');
     }
     terms = await prompter.ask('Digite novos termos de busca:');
   }
@@ -93,6 +87,7 @@ function build(
   code: string,
   name: string,
   unitsPerBox: number,
+  resolvedFrom: 'cache' | 'interactive' = 'cache',
 ): ResolvedLine {
   const siteUnits = toSiteUnits(line.quantity, unitsPerBox);
   return {
@@ -103,5 +98,6 @@ function build(
     requested: line.quantity,
     siteUnits,
     boxes: Math.ceil(siteUnits / unitsPerBox),
+    resolvedFrom,
   };
 }

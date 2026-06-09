@@ -161,19 +161,10 @@ export class AutoAmericaDriver implements IPortalDriver {
 
   async selectPriceTable(code: string): Promise<DriverResult> {
     await this.evalRaw(`
-      jQuery('#CJ_TABELA').val(${JSON.stringify(code)});
+      jQuery('#CJ_TABELA').val(${JSON.stringify(code)}).trigger('change');
       selProd();
       'done'
     `);
-
-    if (this.startOpts) {
-      await this.evalRaw(`
-        jQuery('#CJ_XTPORC').val('3').trigger('change');         // Em elaboração
-        jQuery('#CJ_TPFRETE').val('C').trigger('change');         // CIF
-        jQuery('#CJ_XTRANSP').val('000157').trigger('change');   // Expresso São Miguel
-        'done'
-      `);
-    }
 
     const produtosLoaded = await this.waitFor(
       `document.getElementById('CK_PRODUTO01')?.options.length > 1`,
@@ -184,6 +175,15 @@ export class AutoAmericaDriver implements IPortalDriver {
         status: 'error',
         summary: 'Produtos não carregaram (selProd timeout)',
       };
+    }
+
+    if (this.startOpts) {
+      await this.evalRaw(`
+        jQuery('#CJ_XTPORC').val('3').trigger('change');         // Em elaboração
+        jQuery('#CJ_TPFRETE').val('C').trigger('change');         // CIF
+        jQuery('#CJ_XTRANSP').val('000157').trigger('change');   // Expresso São Miguel
+        'done'
+      `);
     }
 
     return {
