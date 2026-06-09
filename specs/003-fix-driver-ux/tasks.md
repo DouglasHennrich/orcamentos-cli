@@ -1,100 +1,65 @@
-# Tasks: Driver UX e Preenchimento de Inputs
+# Tasks: Driver UX Flow Hardening + Dry-Run Validation
 
-**Input**: Design documents from `/specs/003-fix-driver-ux/`
+**Input**: Driver UX flow design for AutoAmerica and Roberlo
 
 **Branch**: `003-fix-driver-ux`
 
 ## Format: `[ID] [P?] [Story] Description`
 
-- **[P]**: Can run in parallel (different files, no dependencies)
-- **[Story]**: User story this task belongs to (US1, US2, US3)
+- **[P]**: can run in parallel with other tasks
+- **[Story]**: US1 = AutoAmerica header flow, US2 = product resolution UX, US3 = dry-run and line persistence
 
 ---
 
-## Phase 1: Foundational (Blocking Prerequisites)
+## Phase 1: AutoAmerica Header and Line Validation (US1)
 
-**Purpose**: Adição do campo `resolvedFrom` ao tipo `ResolvedLine` — necessário para logging no orchestrator (US3).
-
-**⚠️ CRÍTICO**: US3 depende dessa mudança de tipo.
-
-- [X] T001 Add field `resolvedFrom: 'cache' | 'interactive'` to `ResolvedLine` interface in `src/orcamento/resolver.ts`
-- [X] T002 Set `resolvedFrom: 'cache'` in `build()` function return in `src/orcamento/resolver.ts`
-- [X] T003 Set `resolvedFrom: 'interactive'` in interactive selection return path in `src/orcamento/resolver.ts`
-
-**Checkpoint**: Tipo `ResolvedLine` atualizado — TypeScript compila sem erros
+- [ ] T001 [US1] `src/platforms/autoamerica-driver.ts` — update `selectPriceTable(code)` to set `#CJ_TABELA`, call `.trigger('change')`, call `selProd()`, wait for `CK_PRODUTO01`, then apply `CJ_TPFRETE`, `CJ_XTRANSP`, `CJ_XTPORC`, `CJ_XMODALI = 001`, `CJ_FRETE = 0,00`, `recFrete()`, and finally `CJ_CONDPAG = 031` with UI stability waits between stages.
+- [ ] T002 [US1] `src/platforms/autoamerica-driver.ts` — update `addLine(productCode, units)` to fill product row, set quantity, call `VldQtd(n)`, `TotalItem(n)`, `VldValor(n)`, and wait for item total calculation before returning.
 
 ---
 
-## Phase 2: User Story 1 — Inputs preenchidos corretamente (Priority: P1) 🎯 MVP
+## Phase 2: Roberlo Stability Reinforcement (US1)
 
-**Goal**: `selectPriceTable` dispara evento correto no portal; Modalidade/Frete/Transportadora são setados após carregamento de produtos.
-
-**Independent Test**: Executar orçamento completo e verificar no portal que Tabela de Preço, Modalidade e Transportadora aparecem preenchidos antes do salvamento.
-
-- [X] T004 [US1] Fix `selectPriceTable()` in `src/platforms/autoamerica-driver.ts`: add `.trigger('change')` to `jQuery('#CJ_TABELA').val(code)` call before `selProd()`
-- [X] T005 [US1] Move `if (this.startOpts)` block (setters for `CJ_XTPORC`, `CJ_TPFRETE`, `CJ_XTRANSP`) to AFTER the `waitFor` + error check in `src/platforms/autoamerica-driver.ts`
-- [X] T006 [P] [US1] Verify `selectPriceTable()` in `src/platforms/roberlo-driver.ts`: confirm `.trigger('change')` is present on table field; move Modalidade/Frete setters to after the wait if they precede it
-
-**Checkpoint**: AutoAmerica dispara trigger em `#CJ_TABELA`; setters de Modalidade/Frete executam somente após carregamento de produtos em ambos os drivers
+- [P] [US1] T003 `src/platforms/roberlo-driver.ts` — confirm `selectPriceTable(code)` waits for the product list load, only applies freight/header setters after load, and awaits `blockUI` clearance after the final blur/change.
 
 ---
 
-## Phase 3: User Story 3 — Produtos descobertos adicionados ao orçamento (Priority: P1)
+## Phase 3: Dry-Run and Orchestration Safety (US3)
 
-**Goal**: `driver.addLine()` retorno verificado; produtos com erro logados; contagem de falhas no resumo do run.
-
-**Independent Test**: Executar orçamento com produto resolvido interativamente; verificar que aparece no orçamento E que erros de `addLine` são logados.
-
-**Nota**: Depende de Phase 2 (T004) — o trigger em `CJ_TABELA` é a causa raiz do `U_GATPROD.APW` falhar.
-
-- [X] T007 [US3] In `src/orcamento/orchestrator.ts`, update "Add all lines" loop: check `result.status`, log each product with `resolvedFrom` origin, accumulate failures in `addLineFailures: string[]`
-- [X] T008 [US3] In `src/orcamento/orchestrator.ts`, add failure count warning to final run output after the minimum-value loop
-- [X] T009 [US3] In `src/orcamento/orchestrator.ts`, exclude failed products from `boxes` map so discount logic is not applied to non-added products
-
-**Checkpoint**: Produto com `addLine` falhando é logado com nome/código; outros produtos adicionados normalmente; resumo final exibe contagem de falhas
+- [ ] T004 [US3] `src/orcamento/orchestrator.ts` — ensure `runOrcamento({ dryRun: true })` skips `driver.save()`, skips `driver.exportQuote()`, does not call `exportWriter`, and returns `exportPath: '(simulação)'` while still returning `total` and `parcelas`.
+- [ ] T005 [US3] `src/orcamento/orchestrator.ts` — add safe handling for `driver.addLine()` failures: log origin and error, continue other products, and exclude failed products from discount/box aggregation.
 
 ---
 
-## Phase 4: User Story 2 — Fluxo produto não encontrado sem fricção (Priority: P2)
+## Phase 4: Product Resolution UX Cleanup (US2)
 
-**Goal**: `choose()` não exibe "0) Nenhum"; loop de re-busca direto; aliases extras não são coletados.
-
-**Independent Test**: Executar orçamento com produto não cadastrado; verificar que (a) "0) Nenhum" não aparece na lista, (b) digitar `0` solicita novos termos diretamente, (c) após selecionar produto não pergunta aliases.
-
-- [X] T010 [P] [US2] Fix `ConsolePrompter.choose()` in `src/io/prompt.ts`: remove `\n0) Nenhum / buscar de novo` from output string; keep `n === 0` returning `null`
-- [X] T011 [P] [US2] Fix `resolveLine()` in `src/orcamento/resolver.ts`: remove lines 71–77 (extraRaw/extras collection); update `repo.save()` call to use `aliases: [line.name]` only
-
-**Checkpoint**: `choose()` não exibe opção "0) Nenhum"; alias salvo apenas com nome original do pedido
+- [P] [US2] T006 `src/io/prompt.ts` — remove "0) Nenhum / buscar de novo" from `ConsolePrompter.choose()` display while preserving `n === 0` → `null` behavior.
+- [P] [US2] T007 `src/orcamento/resolver.ts` — remove extra alias collection from interactive resolution; save aliases only as `[line.name]`.
 
 ---
 
-## Phase 5: Testes
+## Phase 5: Tests and Verification
 
-**Purpose**: Atualizar testes existentes para refletir as mudanças de comportamento.
-
-- [X] T012 [P] Update resolver tests in `tests/resolver.test.ts`: assert no `prompter.ask` call for extra aliases after interactive selection; assert `resolvedFrom` is `'cache'` for cache hits and `'interactive'` for interactive selections
-- [X] T013 [P] Update prompt tests (if they exist): assert `choose()` output does NOT contain "Nenhum / buscar de novo"
-- [X] T014 Update orchestrator tests in `tests/orchestrator.test.ts`: add test where `driver.addLine` returns `{ status: 'error' }` — assert remaining products are processed, warning logged, failed product excluded from `boxes` map
-- [X] T015 Run full test suite: `npm test` from repo root — verify all existing tests pass
+- [ ] T008 `tests/orcamento/orchestrator.test.ts` — add dry-run coverage verifying no save/export, no exportWriter call, and `exportPath` is `(simulação)`.
+- [ ] T009 `tests/orcamento/orchestrator.test.ts` — add a failure-path test for `driver.addLine()` returning error and confirm remaining products continue, failure is logged, and failed line is excluded from discount logic.
+- [ ] T010 `tests/resolver.test.ts` — assert the interactive resolution path does not ask for extraneous aliases and records origin correctly if `resolvedFrom` is used.
+- [ ] T011 `tests/prompt.test.ts` (or equivalent) — assert `choose()` output no longer includes the removed option text.
+- [ ] T012 Manual validation — run `agent-orcamento run -o <pedido>.json --dry-run` for AutoAmerica and Roberlo to confirm full simulated flow.
 
 ---
 
-## Dependencies & Execution Order
+## Ordering and Parallelism
 
-- **Phase 1**: No dependencies — start here
-- **Phase 2**: Depends on Phase 1 (`resolvedFrom` field in type)
-- **Phase 3**: Depends on Phase 1 and Phase 2 (CJ_TABELA fix is root cause)
-- **Phase 4**: Depends on Phase 1 only — can run in parallel with Phase 2 (different files)
-- **Phase 5**: Depends on all prior phases
+1. `T001`, `T002` — fix AutoAmerica sequence and line validation first.
+2. `T003`, `T006`, `T007` — can proceed in parallel once the driver UX and prompt UX shape is defined.
+3. `T004`, `T005` — implement dry-run safety and error handling after the driver changes are clear.
+4. `T008`–`T011` — add tests once behavior is implemented.
+5. `T012` — manual CLI validation after code and tests pass.
 
-### Parallel Opportunities
+## Acceptance Checks
 
-- T010, T011 (Phase 4) can run in parallel with Phase 2 tasks (`prompt.ts`, `resolver.ts` vs `autoamerica-driver.ts`)
-- T006 (roberlo-driver.ts) can run in parallel with T004/T005 (autoamerica-driver.ts)
-- T012, T013 can run in parallel within Phase 5
-
-### Sequência recomendada (single developer)
-
-```
-T001-T003 → T004-T005 → T006,T010,T011 (paralelo) → T007-T009 → T012-T015
-```
+- `T001` and `T002` produce a stable AutoAmerica quote flow with header fields applied after product load and native validation functions called in correct order.
+- `T003` improves Roberlo table header stability without changing existing selection semantics.
+- `T004` makes `dryRun` a true simulation path.
+- `T006` and `T007` remove UX friction from product resolution.
+- `T008` and `T009` verify the new behavior in automated coverage.
