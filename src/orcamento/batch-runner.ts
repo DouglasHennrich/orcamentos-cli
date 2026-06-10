@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import { dirname, extname, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import pLimit from 'p-limit';
 import { autoamerica } from '../platforms/autoamerica.js';
 import { roberlo } from '../platforms/roberlo.js';
@@ -66,20 +67,29 @@ async function resolveScreenshotPath(
   return resolved;
 }
 
+async function loadOrderFile(filePath: string): Promise<unknown> {
+  const ext = extname(filePath).toLowerCase();
+  if (ext === '.ts' || ext === '.js' || ext === '.mjs' || ext === '.cjs') {
+    const mod = await import(pathToFileURL(resolve(filePath)).href);
+    return mod.default;
+  }
+  const content = await fs.readFile(filePath, 'utf-8');
+  return JSON.parse(content);
+}
+
 async function expandFiles(
   files: string[],
   errors?: { file: string; error: Error }[],
 ): Promise<OrderTask[]> {
   const tasks: OrderTask[] = [];
   for (const filePath of files) {
-    const content = await fs.readFile(filePath, 'utf-8');
     let parsed: unknown;
     try {
-      parsed = JSON.parse(content);
+      parsed = await loadOrderFile(filePath);
     } catch {
       errors?.push({
         file: filePath,
-        error: new Error(`Invalid JSON in ${filePath}`),
+        error: new Error(`Falha ao carregar arquivo de pedido: ${filePath}`),
       });
       continue;
     }
