@@ -83,6 +83,33 @@ export class RoberloDriver implements IPortalDriver {
     return false;
   }
 
+  private async dismissDuplicateProductModal(): Promise<boolean> {
+    const text = await this.evalRaw(`
+      (function() {
+        var modal = document.querySelector('.modal.in, .modal-dialog');
+        if (!modal) return JSON.stringify('');
+        return JSON.stringify((modal.textContent || '').trim());
+      })()
+    `);
+
+    if (!text) return false;
+    const normalized = text.toLowerCase();
+    const duplicate =
+      /já existe|ja existe|already exists|produto.*existe|produto .* já.*existe/.test(
+        normalized,
+      );
+    if (!duplicate) return false;
+
+    await this.evalRaw(`
+      (function() {
+        var btn = document.querySelector('.modal.in button[data-bb-handler="ok"], .modal-dialog button.btn-primary');
+        if (btn) btn.click();
+        return 'closed';
+      })()
+    `);
+    return true;
+  }
+
   async login(): Promise<DriverResult> {
     await this.navigate(LOGIN_URL);
     await this.waitLoad();
@@ -521,6 +548,14 @@ export class RoberloDriver implements IPortalDriver {
       10000,
     );
 
+    if (await this.dismissDuplicateProductModal()) {
+      this.itemCount -= 1;
+      return {
+        status: 'error',
+        summary: `Produto ${productCode} já existe no pedido`,
+      };
+    }
+
     // Populate price field by calling U_GATPROD.APW directly (async:false).
     // jQuery .trigger('change') does NOT fire native onchange attributes, so
     // gatProduto() is never called automatically — we replicate its AJAX call here.
@@ -844,7 +879,8 @@ export class RoberloDriver implements IPortalDriver {
   }
 
   async captureScreenshot(path: string): Promise<DriverResult> {
-    const result = await this.runner(['screenshot', path]);
+    await this.runner(['set', 'viewport', '2522', '2706']);
+    const result = await this.runner(['screenshot', '--full', path]);
     if (result.code !== 0) {
       return {
         status: 'error',

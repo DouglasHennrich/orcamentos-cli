@@ -1,0 +1,1 @@
+/Users/douglashennrich/Documents/Projetos/Estudos/orcamentos-cli/CLAUDE.md

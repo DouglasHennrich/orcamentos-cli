@@ -20,6 +20,8 @@ export interface RunOrcamentoInput {
   clientRepo: ClientRepository;
   ruleRepo: ProductRuleRepository;
   exportWriter: ExportWriter;
+  /** Optional label representing the source order file or array item. */
+  requestLabel?: string;
   interactive?: boolean;
   dryRun?: boolean;
   screenshotPath?: string;
@@ -46,6 +48,7 @@ export async function runOrcamento(
     clientRepo,
     ruleRepo,
     exportWriter,
+    requestLabel,
     interactive = true,
     dryRun = false,
     screenshotPath,
@@ -139,12 +142,20 @@ export async function runOrcamento(
           siteUnits: ruleUnits,
           boxes: Math.ceil(ruleUnits / (rule.unitsPerBox || 1)),
           resolvedFrom: 'cache',
+          source: 'rule',
         });
       }
     }
 
+    const isDuplicateAddError = (summary = '') =>
+      /já existe|ja existe|already exists|produto.*existe|produto .* já.*existe/i.test(
+        summary,
+      );
+
     // Add all lines in units.
     const boxes = new Map<string, number>();
+    const duplicateRuleLines: string[] = [];
+    const duplicateOrderLines: string[] = [];
     const addLineFailures: string[] = [];
     for (const l of lines) {
       console.log(
@@ -152,13 +163,45 @@ export async function runOrcamento(
       );
       const addResult = await driver.addLine(l.productCode, l.siteUnits);
       if (addResult.status === 'error') {
+        const duplicate = isDuplicateAddError(addResult.summary);
+        if (duplicate && l.source === 'rule') {
+          duplicateRuleLines.push(`${l.productCode} - ${l.productName}`);
+          continue;
+        }
+        if (duplicate && l.source === 'order') {
+          duplicateOrderLines.push(`${l.productCode} - ${l.productName}`);
+          continue;
+        }
         console.warn(
           `Aviso: falha ao adicionar produto ${l.productCode} (${l.productName}): ${addResult.summary}`,
         );
-        addLineFailures.push(`${l.productCode} - ${l.productName}`);
+        addLineFailures.push(
+          `${l.productCode} - ${l.productName}: ${addResult.summary}`,
+        );
         continue;
       }
       boxes.set(l.productCode, l.boxes);
+    }
+
+    if (duplicateRuleLines.length > 0) {
+      console.warn(
+        `\nAviso: ${duplicateRuleLines.length} produto(s) introduzidos por regra já existiam no pedido e foram ignorados:\n` +
+          duplicateRuleLines.map((p) => `  - ${p}`).join('\n'),
+      );
+    }
+
+    if (duplicateOrderLines.length > 0) {
+      console.warn(
+        `\nAtenção: ${duplicateOrderLines.length} produto(s) do pedido já existiam no orçamento e não foram adicionados:\n` +
+          duplicateOrderLines.map((p) => `  - ${p}`).join('\n'),
+      );
+    }
+
+    if (addLineFailures.length > 0) {
+      console.warn(
+        `\nAtenção: ${addLineFailures.length} produto(s) não foram adicionados ao orçamento:\n` +
+          addLineFailures.map((p) => `  - ${p}`).join('\n'),
+      );
     }
 
     // Minimum-value loop: ask the user which line to bump (1 box per step).
@@ -300,6 +343,7 @@ export async function runOrcamento(
     const exportPath = await exportWriter({
       platform: platform.id,
       clientName: exported.data.clientName,
+      ...(requestLabel ? { label: requestLabel } : {}),
       pdfBase64: exported.data.pdfBase64,
     });
 

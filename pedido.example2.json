@@ -1,0 +1,16 @@
+[
+  {
+    "provider": "autoamerica",
+    "client": "Oliveira Oliveira",
+    "produtos": [
+      {
+        "name": "super polidor",
+        "quantity": "10 CX"
+      },
+      {
+        "name": "boina amarela lã",
+        "quantity": "1 CX"
+      }
+    ]
+  }
+]

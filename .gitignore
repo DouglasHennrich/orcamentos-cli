@@ -1,6 +1,7 @@
 node_modules
 dist
 tmp
+.DS_Store
 
 *.env
 # spex: generated/local files (only constitution is committed)

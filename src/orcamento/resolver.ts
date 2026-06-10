@@ -13,6 +13,7 @@ export interface ResolvedLine {
   siteUnits: number;
   boxes: number;
   resolvedFrom: 'cache' | 'interactive';
+  source: 'order' | 'rule';
 }
 
 export interface ResolveDeps {
@@ -88,6 +89,7 @@ function build(
   name: string,
   unitsPerBox: number,
   resolvedFrom: 'cache' | 'interactive' = 'cache',
+  source: 'order' | 'rule' = 'order',
 ): ResolvedLine {
   const siteUnits = toSiteUnits(line.quantity, unitsPerBox);
   return {
@@ -99,5 +101,6 @@ function build(
     siteUnits,
     boxes: Math.ceil(siteUnits / unitsPerBox),
     resolvedFrom,
+    source,
   };
 }

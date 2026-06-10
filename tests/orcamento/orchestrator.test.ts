@@ -102,6 +102,7 @@ describe('runOrcamento', () => {
       driver: driver as unknown as IPortalDriver,
       prompter,
       repo: stubRepo(),
+      clientRepo: stubRepo(),
       ruleRepo: stubRuleRepo(),
       exportWriter: stubExportWriter(),
     });
@@ -128,6 +129,7 @@ describe('runOrcamento', () => {
       driver: driver as unknown as IPortalDriver,
       prompter,
       repo: stubRepo(),
+      clientRepo: stubRepo(),
       ruleRepo: stubRuleRepo(),
       exportWriter: stubExportWriter(),
     });
@@ -151,6 +153,7 @@ describe('runOrcamento', () => {
       driver: driver as unknown as IPortalDriver,
       prompter,
       repo: stubRepo(),
+      clientRepo: stubRepo(),
       ruleRepo: stubRuleRepo(),
       exportWriter: stubExportWriter(),
     });
@@ -173,16 +176,49 @@ describe('runOrcamento', () => {
       driver: driver as unknown as IPortalDriver,
       prompter,
       repo: stubRepo(),
+      clientRepo: stubRepo(),
       ruleRepo: stubRuleRepo(),
       exportWriter,
+      requestLabel: 'pedido.example.json[0]',
     });
     expect(driver.exportQuote).toHaveBeenCalled();
     expect(exportWriter).toHaveBeenCalledWith({
       platform: 'autoamerica',
       clientName: 'CLIENTE STUB',
+      label: 'pedido.example.json[0]',
       pdfBase64: 'JVBERi0=',
     });
     expect(result.exportPath).toBe('/out/autoamerica/CLIENTE STUB.pdf');
+  });
+
+  it('passes the request label to the export writer so file names can be derived from order source labels', async () => {
+    const driver = priceModelDriver({ A: 3000 });
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+    const exportWriter = vi.fn(
+      async () => '/out/autoamerica/pedido.example.json[0].pdf',
+    );
+    await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      clientRepo: stubRepo(),
+      ruleRepo: stubRuleRepo(),
+      exportWriter,
+      requestLabel: './pedido.example.json[0]',
+    });
+    expect(exportWriter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        label: './pedido.example.json[0]',
+      }),
+    );
   });
 
   it('does not save or export when running in dry-run mode', async () => {
@@ -201,6 +237,7 @@ describe('runOrcamento', () => {
       driver: driver as unknown as IPortalDriver,
       prompter,
       repo: stubRepo(),
+      clientRepo: stubRepo(),
       ruleRepo: stubRuleRepo(),
       exportWriter,
       dryRun: true,
@@ -214,7 +251,10 @@ describe('runOrcamento', () => {
 
   it('captures a final screenshot when screenshotPath is provided', async () => {
     const driver = priceModelDriver({ A: 3000 }) as unknown as IPortalDriver;
-    const screenshot = vi.fn(async () => ({ status: 'success' as const, summary: 'ok' }));
+    const screenshot = vi.fn(async () => ({
+      status: 'success' as const,
+      summary: 'ok',
+    }));
     (driver as any).captureScreenshot = screenshot;
 
     const prompter: Prompter = {
@@ -231,12 +271,65 @@ describe('runOrcamento', () => {
       driver: driver as unknown as IPortalDriver,
       prompter,
       repo: stubRepo(),
+      clientRepo: stubRepo(),
       ruleRepo: stubRuleRepo(),
       exportWriter,
       screenshotPath: '/tmp/final-pedido.png',
     });
 
     expect(screenshot).toHaveBeenCalledWith('/tmp/final-pedido.png');
+  });
+
+  it('ignores add-product rules when the portal reports the product already exists', async () => {
+    const driver = priceModelDriver({ A: 3000 }) as unknown as IPortalDriver;
+    const addLine = vi.fn(async (code: string, units: number) => {
+      if (code === 'B') {
+        return {
+          status: 'error' as const,
+          summary: 'Produto B já existe no pedido',
+        };
+      }
+      driver._units[code] = units;
+      return {
+        status: 'success' as const,
+        summary: 'ok',
+      };
+    });
+    (driver as any).addLine = addLine;
+
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+    const exportWriter = vi.fn(async () => '/out/autoamerica/CLIENTE STUB.pdf');
+
+    await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      clientRepo: stubRepo(),
+      ruleRepo: stubRuleRepo([
+        {
+          type: 'add-product',
+          provider: 'autoamerica',
+          productCode: 'B',
+          quantityValue: 1,
+          quantityUnit: 'CX',
+          unitsPerBox: 6,
+          enabled: true,
+        },
+      ]),
+      exportWriter,
+    });
+
+    expect(addLine).toHaveBeenCalledWith('A', 6);
+    expect(addLine).toHaveBeenCalledWith('B', 6);
+    expect(driver.save).toHaveBeenCalled();
   });
 
   it('throws when the mandatory export fails', async () => {
@@ -259,6 +352,7 @@ describe('runOrcamento', () => {
         driver: driver as unknown as IPortalDriver,
         prompter,
         repo: stubRepo(),
+        clientRepo: stubRepo(),
         ruleRepo: stubRuleRepo(),
         exportWriter: stubExportWriter(),
       }),
@@ -290,6 +384,7 @@ describe('runOrcamento', () => {
       driver: driver as unknown as IPortalDriver,
       prompter,
       repo: stubRepo(),
+      clientRepo: stubRepo(),
       ruleRepo,
       exportWriter: stubExportWriter(),
     });
@@ -322,6 +417,7 @@ describe('runOrcamento', () => {
       driver: driver as unknown as IPortalDriver,
       prompter,
       repo: stubRepo(),
+      clientRepo: stubRepo(),
       ruleRepo,
       exportWriter: stubExportWriter(),
     });
@@ -352,6 +448,7 @@ describe('runOrcamento', () => {
       driver: driver as unknown as IPortalDriver,
       prompter,
       repo: stubRepo(),
+      clientRepo: stubRepo(),
       ruleRepo,
       exportWriter: stubExportWriter(),
     });
@@ -375,6 +472,7 @@ describe('runOrcamento', () => {
         driver: driver as unknown as IPortalDriver,
         prompter,
         repo: stubRepo(),
+        clientRepo: stubRepo(),
         ruleRepo: stubRuleRepo(),
         exportWriter: stubExportWriter(),
         interactive: false,
@@ -404,6 +502,7 @@ describe('runOrcamento', () => {
       driver: driver as unknown as IPortalDriver,
       prompter,
       repo: stubRepo(),
+      clientRepo: stubRepo(),
       ruleRepo: stubRuleRepo(),
       exportWriter: stubExportWriter(),
     });
@@ -468,6 +567,7 @@ describe('runOrcamento', () => {
         driver: driver as unknown as IPortalDriver,
         prompter,
         repo: stubRepo(),
+        clientRepo: stubRepo(),
         ruleRepo,
         exportWriter: stubExportWriter(),
       });
@@ -498,6 +598,7 @@ describe('runOrcamento', () => {
         driver: driver as unknown as IPortalDriver,
         prompter,
         repo: stubRepo(),
+        clientRepo: stubRepo(),
         ruleRepo,
         exportWriter: stubExportWriter(),
       });
@@ -537,6 +638,7 @@ describe('runOrcamento', () => {
         driver: driver as unknown as IPortalDriver,
         prompter,
         repo: stubRepo(),
+        clientRepo: stubRepo(),
         ruleRepo,
         exportWriter: stubExportWriter(),
       });
@@ -574,6 +676,7 @@ describe('runOrcamento', () => {
         driver: driver as unknown as IPortalDriver,
         prompter,
         repo: stubRepo(),
+        clientRepo: stubRepo(),
         ruleRepo,
         exportWriter: stubExportWriter(),
       });
@@ -611,6 +714,7 @@ describe('runOrcamento', () => {
         driver: driver as unknown as IPortalDriver,
         prompter,
         repo: stubRepo(),
+        clientRepo: stubRepo(),
         ruleRepo,
         exportWriter: stubExportWriter(),
       });

@@ -2,7 +2,10 @@ import type { ProductOption, ExportedQuote } from './types.js';
 
 /** "R$ 2.500,00" -> 2500. Strips currency symbol, dots (thousands), converts comma to dot. */
 export function parseBRL(text: string): number {
-  const cleaned = text.replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
+  const cleaned = text
+    .replace(/[^\d,.-]/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.');
   const n = Number(cleaned);
   if (Number.isNaN(n)) throw new Error(`Valor monetário inválido: "${text}"`);
   return n;
@@ -32,7 +35,12 @@ const EXPORT_JS = `(function () {
     });
     var recMatch = printA ? (printA.getAttribute('onclick') || '').match(/PrtOrc\\((\\d+)\\)/) : null;
     var rec = recMatch ? recMatch[1] : '';
-    if (!rec) return JSON.stringify({ error: 'rec nao encontrado na primeira linha' });
+    if (!rec) {
+      var allOnclicks = Array.from(tr.querySelectorAll('a')).map(function (a) { return a.getAttribute('onclick') || ''; }).filter(Boolean);
+      var url = location.href.slice(-120);
+      var trHtml = tr.innerHTML.slice(0, 600);
+      return JSON.stringify({ error: 'rec nao encontrado na primeira linha', debug: { url: url, onclicks: allOnclicks, trHtml: trHtml } });
+    }
 
     var headers = Array.from(document.querySelectorAll('table thead th')).map(function (th) {
       return th.textContent.replace(/\s/g, ' ').trim().toLowerCase();

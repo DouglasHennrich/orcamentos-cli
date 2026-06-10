@@ -70,6 +70,33 @@ export class AutoAmericaDriver implements IPortalDriver {
     return false;
   }
 
+  private async dismissDuplicateProductModal(): Promise<boolean> {
+    const text = await this.evalRaw(`
+      (function() {
+        var modal = document.querySelector('.modal.in, .modal-dialog');
+        if (!modal) return JSON.stringify('');
+        return JSON.stringify((modal.textContent || '').trim());
+      })()
+    `);
+
+    if (!text) return false;
+    var normalized = text.toLowerCase();
+    var duplicate =
+      /já existe|ja existe|already exists|produto.*existe|produto .* já.*existe/.test(
+        normalized,
+      );
+    if (!duplicate) return false;
+
+    await this.evalRaw(`
+      (function() {
+        var btn = document.querySelector('.modal.in button[data-bb-handler="ok"], .modal-dialog button.btn-primary');
+        if (btn) btn.click();
+        return 'closed';
+      })()
+    `);
+    return true;
+  }
+
   async login(): Promise<DriverResult> {
     await this.navigate(LOGIN_URL);
     await this.waitLoad();
@@ -463,6 +490,14 @@ export class AutoAmericaDriver implements IPortalDriver {
       10000,
     );
 
+    if (await this.dismissDuplicateProductModal()) {
+      this.itemCount -= 1;
+      return {
+        status: 'error',
+        summary: `Produto ${productCode} já existe no pedido`,
+      };
+    }
+
     // Populate price field by calling U_GATPROD.APW directly (async:false).
     // jQuery .trigger('change') does NOT fire native onchange attributes, so
     // gatProduto() is never called automatically — we replicate its AJAX call here.
@@ -526,15 +561,17 @@ export class AutoAmericaDriver implements IPortalDriver {
     }
 
     // Set quantity and trigger price recalculation using the portal's validation flow.
+    // VldQtd/TotalItem/VldValor are portal globals; guard with typeof in case the
+    // page is briefly in a transition state between row additions.
     await this.evalRaw(`
       (function() {
         var q = jQuery('#CK_QTDVEN${n}');
         q.removeAttr('disabled');
         q.val(${JSON.stringify(String(units))}).trigger('change');
         q.focus().blur();
-        VldQtd('${n}');
-        TotalItem('${n}');
-        VldValor('${n}');
+        if (typeof VldQtd === 'function') VldQtd('${n}');
+        if (typeof TotalItem === 'function') TotalItem('${n}');
+        if (typeof VldValor === 'function') VldValor('${n}');
       })();
       'done'
     `);
@@ -696,14 +733,18 @@ export class AutoAmericaDriver implements IPortalDriver {
       `document.getElementById('btSalvar').click(); 'clicked'`,
     );
     await this.waitLoad();
-    // After save the portal redirects to U_orcamento.apw (listing).
-    // Wait for at least one table row so exportQuote() doesn't run on a half-loaded page.
-    await this.waitFor(`document.querySelector('table tbody tr')`, 10000);
+    // Portal stays on u_AddOrc.apw after save — navigate back to the listing
+    // via the menu link (same pattern as startQuote) to reach U_orcamento.apw.
+    await this.evalRaw(
+      `document.querySelector('a[href*="U_orcamento.apw"]')?.click(); 'ok'`,
+    );
+    await this.waitLoad();
+    await this.waitFor(`document.querySelector('a[onclick*="PrtOrc"]')`, 10000);
     return { status: 'success', summary: 'Orçamento salvo com sucesso' };
   }
 
   async captureScreenshot(path: string): Promise<DriverResult> {
-    const result = await this.runner(['screenshot', path]);
+    const result = await this.runner(['screenshot', '--full', path]);
     if (result.code !== 0) {
       return {
         status: 'error',

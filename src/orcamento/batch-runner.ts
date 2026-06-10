@@ -5,7 +5,7 @@ import { autoamerica } from '../platforms/autoamerica.js';
 import { roberlo } from '../platforms/roberlo.js';
 import { AutoAmericaDriver } from '../platforms/autoamerica-driver.js';
 import { RoberloDriver } from '../platforms/roberlo-driver.js';
-import { realRunner, headedRunner } from '../platforms/agent-browser-runner.js';
+import { headedRunner, realRunner } from '../platforms/agent-browser-runner.js';
 import type { Prompter } from '../io/prompt.js';
 import type { AliasRepository } from '../db/alias-repository.js';
 import type { ClientRepository } from '../db/client-repository.js';
@@ -154,6 +154,7 @@ async function processTask(
       clientRepo: options.clientRepo,
       ruleRepo: options.ruleRepo,
       exportWriter: options.exportWriter,
+      requestLabel: task.label,
       interactive: options.interactive ?? false,
       ...(options.dryRun ? { dryRun: true } : {}),
       ...(screenshotPath ? { screenshotPath } : {}),

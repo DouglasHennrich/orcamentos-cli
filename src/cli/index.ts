@@ -38,7 +38,10 @@ program
   )
   .option('--headed', 'Abre o browser visível (útil para debug)')
   .option('--dry-run', 'Simula sem salvar o orçamento no portal')
-  .option('--screenshot <path>', 'Captura screenshot final do pedido na página e salva em PNG')
+  .option(
+    '--screenshot <path>',
+    'Captura screenshot final do pedido na página e salva em PNG',
+  )
   .action(
     async (opts: {
       order?: string[];
@@ -69,6 +72,9 @@ program
           `Iniciando processamento de ${opts.order.length} orçamentos (paralelismo: ${concurrency})...\n`,
         );
 
+        const headed =
+          opts.headed ?? process.env.AGENT_BROWSER_HEADED?.toLowerCase() === 'true';
+
         const summary = await runBatch(opts.order, {
           prompter,
           repo,
@@ -77,7 +83,7 @@ program
           exportWriter,
           concurrency,
           interactive,
-          ...(opts.headed ? { headed: true } : {}),
+          headed,
           ...(opts.dryRun ? { dryRun: true } : {}),
           ...(opts.screenshot ? { screenshotPath: opts.screenshot } : {}),
         });

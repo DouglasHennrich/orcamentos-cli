@@ -13,40 +13,34 @@ export function makeRunner(exec: ExecFn): AgentBrowserRunner {
   return (args) => exec(args);
 }
 
-/** Real runner: shells out to the installed `agent-browser` CLI. */
-export const realRunner: AgentBrowserRunner = makeRunner(
-  (args) =>
-    new Promise((resolve) => {
-      execFile(
-        'agent-browser',
-        args,
-        { maxBuffer: 32 * 1024 * 1024 },
-        (err, stdout, stderr) => {
-          resolve({
-            stdout: stdout ?? '',
-            stderr: stderr ?? '',
-            code: err ? 1 : 0,
-          });
-        },
-      );
-    }),
-);
+export function makePrefixedRunner(
+  prefixArgs: string[],
+  exec: ExecFn,
+): AgentBrowserRunner {
+  return (args) => exec([...prefixArgs, ...args]);
+}
 
-/** Headed runner: same as realRunner but launches browser in visible mode. */
-export const headedRunner: AgentBrowserRunner = makeRunner(
-  (args) =>
-    new Promise((resolve) => {
-      execFile(
-        'agent-browser',
-        ['--headed', ...args],
-        { maxBuffer: 32 * 1024 * 1024 },
-        (err, stdout, stderr) => {
-          resolve({
-            stdout: stdout ?? '',
-            stderr: stderr ?? '',
-            code: err ? 1 : 0,
-          });
-        },
-      );
-    }),
+const execAgentBrowser: ExecFn = (args) =>
+  new Promise((resolve) => {
+    execFile(
+      'agent-browser',
+      args,
+      { maxBuffer: 32 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        resolve({
+          stdout: stdout ?? '',
+          stderr: stderr ?? '',
+          code: err ? 1 : 0,
+        });
+      },
+    );
+  });
+
+/** Real runner: shells out to the installed `agent-browser` CLI with no mode flags. */
+export const realRunner: AgentBrowserRunner = makeRunner(execAgentBrowser);
+
+/** Headed runner: launches browser in visible mode. */
+export const headedRunner: AgentBrowserRunner = makePrefixedRunner(
+  ['--headed'],
+  execAgentBrowser,
 );
