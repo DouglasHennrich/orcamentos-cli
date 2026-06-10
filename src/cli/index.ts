@@ -94,14 +94,14 @@ program
 
         // Show summary table
         const table = new Table({
-          head: ['Arquivo', 'Status', 'Total', 'Exportado'],
+          head: ['Cliente', 'Status', 'Total', 'Exportado'],
           style: { head: ['cyan'] },
         });
 
         for (const res of summary.results) {
           if (res.status === 'success' && res.result) {
             table.push([
-              res.filePath,
+              res.result.client,
               '✅ OK',
               `R$ ${res.result.total.toFixed(2).replace('.', ',')}`,
               res.result.exportPath,

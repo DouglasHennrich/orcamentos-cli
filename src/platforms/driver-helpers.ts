@@ -21,15 +21,47 @@ export function parseDropdownOptions(labels: string[]): ProductOption[] {
 }
 
 /**
- * JS executado na página (listagem U_orcamento.apw) para exportar o orçamento
- * da primeira linha. Replica PrtOrc(rec) de forma síncrona e baixa o PDF em base64.
- * Retorna SEMPRE JSON.stringify(...) — { rec, orcamentoNumber, clientName, filename, pdfBase64 } ou { error }.
+ * Builds JS to export an orçamento from the listing page (U_orcamento.apw).
+ * If `targetRec` is provided, finds the row whose PrtOrc rec matches; otherwise
+ * falls back to the first row. Downloads the PDF as base64.
+ * Always returns JSON.stringify({ rec, orcamentoNumber, clientName, filename, pdfBase64 }) or { error }.
  */
-const EXPORT_JS = `(function () {
+function makeExportJs(targetRec?: string): string {
+  const recLiteral = targetRec ? JSON.stringify(targetRec) : 'null';
+  return `(function () {
   try {
     var rows = document.querySelectorAll('table tbody tr');
     if (!rows.length) return JSON.stringify({ error: 'listagem vazia' });
-    var tr = rows[0];
+    var targetRec = ${recLiteral};
+    var tr = null;
+    if (targetRec) {
+      tr = Array.from(rows).find(function (row) {
+        var a = Array.from(row.querySelectorAll('a')).find(function (a) {
+          var m = (a.getAttribute('onclick') || '').match(/PrtOrc\\((\\d+)\\)/);
+          return m && m[1] === targetRec;
+        });
+        return !!a;
+      }) || null;
+      if (!tr) return JSON.stringify({ error: 'orçamento rec=' + targetRec + ' não encontrado na listagem' });
+    } else {
+      // No targetRec: pick the row whose PrtOrc rec number is highest.
+      // Protheus recs are sequential auto-incremented integers, so the highest rec
+      // is always the most recently created record — regardless of listing sort order.
+      var bestRec = -1;
+      var bestRow = rows[0];
+      Array.from(document.querySelectorAll('a[onclick*="PrtOrc"]')).forEach(function (a) {
+        var m = (a.getAttribute('onclick') || '').match(/PrtOrc\\((\\d+)\\)/);
+        if (m) {
+          var r = parseInt(m[1], 10);
+          if (r > bestRec) {
+            bestRec = r;
+            var row = a.closest('tr');
+            if (row) bestRow = row;
+          }
+        }
+      });
+      tr = bestRow;
+    }
     var printA = Array.from(tr.querySelectorAll('a')).find(function (a) {
       return (a.getAttribute('onclick') || '').indexOf('PrtOrc') >= 0;
     });
@@ -39,7 +71,7 @@ const EXPORT_JS = `(function () {
       var allOnclicks = Array.from(tr.querySelectorAll('a')).map(function (a) { return a.getAttribute('onclick') || ''; }).filter(Boolean);
       var url = location.href.slice(-120);
       var trHtml = tr.innerHTML.slice(0, 600);
-      return JSON.stringify({ error: 'rec nao encontrado na primeira linha', debug: { url: url, onclicks: allOnclicks, trHtml: trHtml } });
+      return JSON.stringify({ error: 'rec nao encontrado na linha', debug: { url: url, onclicks: allOnclicks, trHtml: trHtml } });
     }
 
     var headers = Array.from(document.querySelectorAll('table thead th')).map(function (th) {
@@ -79,6 +111,7 @@ const EXPORT_JS = `(function () {
     return JSON.stringify({ error: String((e && e.message) || e) });
   }
 })()`;
+}
 
 interface ExportPayload {
   rec?: string;
@@ -90,14 +123,17 @@ interface ExportPayload {
 }
 
 /**
- * Exporta o orçamento da primeira linha da listagem.
- * `evalRaw` é o método do driver que roda JS na página (sessão autenticada,
- * já posicionada em U_orcamento.apw após o save).
+ * Exporta o orçamento da listagem. Se `targetRec` for fornecido, localiza a linha
+ * exata pelo rec (evitando exportar o orçamento errado quando a lista não está
+ * ordenada por data desc). Caso contrário, usa a primeira linha como fallback.
  */
 export async function exportLastQuote(
   evalRaw: (js: string) => Promise<string>,
+  targetRec?: string,
 ): Promise<ExportedQuote> {
-  const payload = JSON.parse(await evalRaw(EXPORT_JS)) as ExportPayload;
+  const payload = JSON.parse(
+    await evalRaw(makeExportJs(targetRec)),
+  ) as ExportPayload;
   if (payload.error) throw new Error(`Falha no export: ${payload.error}`);
   if (!payload.pdfBase64) throw new Error('Falha no export: PDF vazio');
   return {

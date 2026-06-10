@@ -128,9 +128,15 @@ export class ConsolePrompter implements Prompter {
     options: ProductOption[],
   ): Promise<ProductOption | null> {
     return this.enqueue(async () => {
+      if (options.length === 0) {
+        this.output.write(`${question}\nNenhum resultado encontrado.\n`);
+        return null;
+      }
       this.output.write(`${question}\n${formatOptions(options)}\n`);
       for (;;) {
-        const raw = await this.askRaw('Escolha o número:');
+        const raw = await this.askRaw(
+          'Escolha o número (0 para buscar novamente):',
+        );
         const n = Number(raw);
         if (n === 0) return null;
         if (Number.isInteger(n) && n >= 1 && n <= options.length) {

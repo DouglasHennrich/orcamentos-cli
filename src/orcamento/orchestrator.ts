@@ -35,6 +35,7 @@ export interface RunOrcamentoResult {
   total: number;
   parcelas: string;
   exportPath: string;
+  client: string;
 }
 
 const MAX_BUMP_ITERATIONS = 1000;
@@ -357,7 +358,7 @@ export async function runOrcamento(
       console.log(
         `\nSimulação concluída (não salvo). Total: R$ ${total.toFixed(2).replace('.', ',')}`,
       );
-      return { total, parcelas: plan.label, exportPath: '(simulação)' };
+      return { total, parcelas: plan.label, exportPath: '(simulação)', client };
     }
 
     await driver.save();
@@ -398,7 +399,7 @@ export async function runOrcamento(
       }
     }
 
-    return { total, parcelas: plan.label, exportPath };
+    return { total, parcelas: plan.label, exportPath, client };
   } finally {
     if (driver.close) {
       await driver.close();

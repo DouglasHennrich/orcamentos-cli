@@ -27,6 +27,7 @@ function pad(n: number): string {
 export class AutoAmericaDriver implements IPortalDriver {
   private itemCount = 0;
   private startOpts?: StartQuoteOpts;
+  private savedRec: string | undefined = undefined;
 
   constructor(
     private readonly runner: AgentBrowserRunner,
@@ -732,18 +733,46 @@ export class AutoAmericaDriver implements IPortalDriver {
     await this.evalRaw(
       `document.getElementById('btSalvar').click(); 'clicked'`,
     );
-    await this.waitLoad();
-    // Portal stays on u_AddOrc.apw after save — navigate back to the listing
-    // via the menu link (same pattern as startQuote) to reach U_orcamento.apw.
+
+    // btSalvar shows a bootbox-confirm (Sim/Não) — wait for it then click Sim.
+    await this.waitFor(`document.querySelector('.bootbox-confirm.in')`, 5000);
+
+    const simClicked = await this.evalRaw(`
+      (function() {
+        var modal = document.querySelector('.bootbox-confirm.in');
+        if (modal) {
+          var sim = Array.from(modal.querySelectorAll('button')).find(function(b) {
+            var t = (b.textContent || '').trim().toLowerCase();
+            return t === 'sim' || t === 's' || t === 'yes';
+          });
+          if (sim) { sim.click(); return 'clicked:bootbox-sim'; }
+          var primary = modal.querySelector('button.btn-primary');
+          if (primary) { primary.click(); return 'clicked:bootbox-primary'; }
+        }
+        var confirma = document.getElementById('dialogConfirm');
+        if (confirma) { confirma.click(); return 'clicked:dialogConfirm'; }
+        return 'not-found';
+      })()
+    `);
+
+    if (simClicked !== 'not-found') {
+      await this.waitLoad();
+    }
+
+    // Navigate to the listing via the menu link (same pattern as startQuote).
     await this.evalRaw(
       `document.querySelector('a[href*="U_orcamento.apw"]')?.click(); 'ok'`,
     );
     await this.waitLoad();
     await this.waitFor(`document.querySelector('a[onclick*="PrtOrc"]')`, 10000);
+
     return { status: 'success', summary: 'Orçamento salvo com sucesso' };
   }
 
   async captureScreenshot(path: string): Promise<DriverResult> {
+    // Wait for network idle before screenshot — avoids os error 35 (EAGAIN)
+    // caused by the daemon still processing the previous portal operation.
+    await this.waitLoad();
     const result = await this.runner(['screenshot', '--full', path]);
     if (result.code !== 0) {
       return {
@@ -759,7 +788,10 @@ export class AutoAmericaDriver implements IPortalDriver {
 
   async exportQuote(): Promise<DriverResult<ExportedQuote>> {
     try {
-      const data = await exportLastQuote((js) => this.evalRaw(js));
+      const data = await exportLastQuote(
+        (js) => this.evalRaw(js),
+        this.savedRec,
+      );
       return {
         status: 'success',
         summary: `Orçamento ${data.orcamentoNumber} exportado (${data.clientName})`,
