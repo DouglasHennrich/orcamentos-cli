@@ -3,12 +3,14 @@ import type {
   ProductRuleRepository,
   CreateProductRuleInput,
 } from '../db/product-rule-repository.js';
+import type { AliasRepository } from '../db/alias-repository.js';
 import type { Platform } from '../platforms/types.js';
 
 const { Select, Input, Confirm } = enquirer as any;
 
 export async function runRulesEditor(
   repo: ProductRuleRepository,
+  aliasRepo: AliasRepository,
 ): Promise<void> {
   const providerSelect = new Select({
     name: 'provider',
@@ -35,7 +37,9 @@ export async function runRulesEditor(
         } else if (r.type === 'override-discount') {
           details = `Desconto fixo em ${r.productCode} (${r.productName || '?'}) -> ${r.discountPct}%`;
         } else if (r.type === 'threshold-discount') {
-          details = `Desconto por quantidade: >=${r.quantityValue} cx -> ${r.discountPct}%`;
+          details = `Desconto por quantidade: >=${r.quantityValue} cx -> ${r.discountPct}% ${
+            r.productCode === '*' ? '(global)' : `(produto ${r.productCode})`
+          }`;
         }
         console.log(`${i + 1}. ${status} ${details}`);
       });
@@ -59,10 +63,10 @@ export async function runRulesEditor(
 
     const action = await mainMenu.run();
 
-    if (action === 'exit') break;
+    if (action === 'exit' || !action) break;
 
     if (action === 'add') {
-      await addRule(repo, provider);
+      await addRule(repo, provider, aliasRepo);
     } else if (action === 'edit') {
       const idx = await pickRule(rules);
       if (idx !== -1) await editRule(repo, rules[idx]);
@@ -109,6 +113,7 @@ async function pickRule(rules: any[]): Promise<number> {
 async function addRule(
   repo: ProductRuleRepository,
   provider: Platform,
+  aliasRepo: AliasRepository,
 ): Promise<void> {
   const typeSelect = new Select({
     name: 'type',
@@ -131,6 +136,58 @@ async function addRule(
     | 'threshold-discount';
 
   if (type === 'threshold-discount') {
+    const scopeSelect = new Select({
+      name: 'scope',
+      message: 'Escopo do desconto por quantidade:',
+      choices: [
+        { name: 'global', message: 'Todos os produtos' },
+        { name: 'product', message: 'Produto específico' },
+      ],
+    });
+    const scope = (await scopeSelect.run()) as 'global' | 'product';
+
+    let productCode = '*';
+    let productName: string | undefined = undefined;
+
+    if (scope === 'product') {
+      const codeInput = new Input({ message: 'Código do produto:' });
+      const aliasRaw = await codeInput.run();
+
+      const nameInput = new Input({
+        message: 'Nome do produto (para criar alias se necessário):',
+      });
+      productName = await nameInput.run();
+
+      let alias = aliasRepo.find(provider, aliasRaw);
+      if (!alias) {
+        alias = aliasRepo.findFuzzy(provider, aliasRaw);
+      }
+
+      if (!alias) {
+        const unitsInput = new Input({
+          message: 'Unidades por caixa para o novo produto:',
+          initial: '1',
+          validate: (val: string) => {
+            const n = parseInt(val, 10);
+            if (isNaN(n) || n < 1) return 'Deve ser um número inteiro >= 1';
+            return true;
+          },
+        });
+        const unitsPerBox = parseInt(await unitsInput.run(), 10);
+
+        aliasRepo.save({
+          platform: provider,
+          aliases: [aliasRaw],
+          productCode: aliasRaw,
+          productName: productName || aliasRaw,
+          unitsPerBox: unitsPerBox || 1,
+        });
+        productCode = aliasRaw;
+      } else {
+        productCode = alias.productCode;
+      }
+    }
+
     const minBoxesInput = new Input({
       message: 'Mínimo de caixas para o desconto (>=):',
       initial: '1',
@@ -158,7 +215,8 @@ async function addRule(
     repo.save({
       provider,
       type,
-      productCode: '*',
+      productCode,
+      productName: scope === 'product' ? productName || productCode : undefined,
       quantityValue,
       discountPct,
     });

@@ -62,7 +62,9 @@ program
       const clientRepo = new ClientRepository(opts.db);
       const ruleRepo = new ProductRuleRepository(opts.db);
       const prompter = new ConsolePrompter();
-      const exportWriter = makeExportWriter();
+      const exportBaseDir =
+        process.env.ORCAMENTO_EXPORT_DIR ?? 'public/orcamentos';
+      const exportWriter = makeExportWriter(exportBaseDir);
 
       const concurrency = parseInt(opts.concurrency, 10) || 3;
       const interactive = opts.order.length === 1;
@@ -73,7 +75,8 @@ program
         );
 
         const headed =
-          opts.headed ?? process.env.AGENT_BROWSER_HEADED?.toLowerCase() === 'true';
+          opts.headed ??
+          process.env.AGENT_BROWSER_HEADED?.toLowerCase() === 'true';
 
         const summary = await runBatch(opts.order, {
           prompter,
@@ -84,6 +87,7 @@ program
           concurrency,
           interactive,
           headed,
+          autoScreenshotDir: exportBaseDir,
           ...(opts.dryRun ? { dryRun: true } : {}),
           ...(opts.screenshot ? { screenshotPath: opts.screenshot } : {}),
         });
@@ -134,7 +138,7 @@ program
 program
   .command('rules')
   .description(
-    'Gerencia as regras de produtos (add-product e override-discount)',
+    'Gerencia as regras de produtos (add-product, override-discount e threshold-discount)',
   )
   .option(
     '--db <path>',
@@ -143,14 +147,16 @@ program
   )
   .action(async (opts: { db: string }) => {
     const repo = new ProductRuleRepository(opts.db);
+    const aliasRepo = new AliasRepository(opts.db);
     try {
-      await runRulesEditor(repo);
+      await runRulesEditor(repo, aliasRepo);
     } catch (e) {
       if ((e as Error).message !== '') {
         console.error(`\nErro: ${(e as Error).message}`);
       }
     } finally {
       repo.close();
+      aliasRepo.close();
     }
   });
 

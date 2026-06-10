@@ -1,5 +1,7 @@
 // src/orcamento/orchestrator.test.ts
 import { describe, it, expect, vi } from 'vitest';
+import { mkdir, writeFile, rm, stat } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { runOrcamento } from '../../src/orcamento/orchestrator.js';
 import { autoamerica } from '../../src/platforms/autoamerica.js';
 import type { Prompter } from '../../src/io/prompt.js';
@@ -86,6 +88,12 @@ const orderLine = (code: string, boxes: number) => ({
 
 const stubExportWriter = () => vi.fn(async () => '/tmp/orc/CLIENTE STUB.pdf');
 
+async function makeTempDir() {
+  const dir = resolve('tmp', `orc-test-${Math.random().toString(36).slice(2)}`);
+  await mkdir(dir, { recursive: true });
+  return dir;
+}
+
 describe('runOrcamento', () => {
   it('stops at minimum when total already meets it; sets correct parcelas; saves', async () => {
     const driver = priceModelDriver({ A: 3000 }); // 1 box = 3000 >= 2500
@@ -94,6 +102,7 @@ describe('runOrcamento', () => {
       choose: vi.fn(),
       askInt: vi.fn(),
       askInts: vi.fn(),
+      withContext: vi.fn().mockReturnThis(),
     };
     const result = await runOrcamento({
       platform: autoamerica,
@@ -115,12 +124,13 @@ describe('runOrcamento', () => {
   it('bumps 1 box at a time when below minimum, asking the user each step', async () => {
     // Each box = 1000; start with 1 box = 1000; need >= 2500 -> 3 boxes
     const driver = priceModelDriver({ A: 1000 });
-    const askInts = vi.fn(async () => [1]); // user always picks line #1
+    const choose = vi.fn().mockResolvedValue({ code: 'A', name: 'A' });
     const prompter: Prompter = {
       ask: vi.fn(),
-      choose: vi.fn(),
+      choose,
       askInt: vi.fn(),
-      askInts,
+      askInts: vi.fn(),
+      withContext: vi.fn().mockReturnThis(),
     };
     await runOrcamento({
       platform: autoamerica,
@@ -135,7 +145,7 @@ describe('runOrcamento', () => {
     });
     // Should end up with 3 boxes = 18 units (1 initial + 2 bumps via updateLine)
     expect(driver._units.A).toBe(18);
-    expect(askInts).toHaveBeenCalledTimes(2); // asked twice to bump from 1->2->3
+    expect(choose).toHaveBeenCalledTimes(2); // asked twice to bump from 1->2->3
   });
 
   it('applies 15% line discount when a line exceeds 10 boxes (Auto America)', async () => {
@@ -278,6 +288,270 @@ describe('runOrcamento', () => {
     });
 
     expect(screenshot).toHaveBeenCalledWith('/tmp/final-pedido.png');
+  });
+
+  it('applies global threshold discount to any product', async () => {
+    const driver = priceModelDriver({ A: 1000, B: 1000 });
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn().mockResolvedValue({ code: 'A', name: 'A' }),
+      askInt: vi.fn(),
+      askInts: vi.fn().mockResolvedValue([1]),
+      withContext: vi.fn().mockReturnThis(),
+    };
+    const ruleRepo = stubRuleRepo([
+      {
+        type: 'threshold-discount',
+        provider: 'autoamerica',
+        productCode: '*',
+        quantityValue: 1,
+        discountPct: 10,
+        enabled: true,
+      },
+    ]);
+
+    await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      clientRepo: stubRepo(),
+      ruleRepo,
+      exportWriter: stubExportWriter(),
+    });
+
+    expect(driver.applyDiscount).toHaveBeenCalledWith('A', 10);
+  });
+
+  it('applies product-specific threshold only to the matching product', async () => {
+    const driver = priceModelDriver({ A: 1000, B: 1000 });
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn().mockResolvedValue({ code: 'A', name: 'A' }),
+      askInt: vi.fn(),
+      askInts: vi.fn().mockResolvedValue([1]),
+      withContext: vi.fn().mockReturnThis(),
+    };
+    const ruleRepo = stubRuleRepo([
+      {
+        type: 'threshold-discount',
+        provider: 'autoamerica',
+        productCode: '*',
+        quantityValue: 1,
+        discountPct: 5,
+        enabled: true,
+      },
+      {
+        type: 'threshold-discount',
+        provider: 'autoamerica',
+        productCode: 'A',
+        quantityValue: 1,
+        discountPct: 10,
+        enabled: true,
+      },
+    ]);
+
+    await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1), orderLine('B', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      clientRepo: stubRepo(),
+      ruleRepo,
+      exportWriter: stubExportWriter(),
+    });
+
+    expect(driver.applyDiscount).toHaveBeenCalledWith('A', 10);
+    expect(driver.applyDiscount).toHaveBeenCalledWith('B', 5);
+  });
+
+  it('prefers product-specific threshold rules over global ones for the same product', async () => {
+    const driver = priceModelDriver({ A: 1000 });
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn().mockResolvedValue({ code: 'A', name: 'A' }),
+      askInt: vi.fn(),
+      askInts: vi.fn().mockResolvedValue([1]),
+      withContext: vi.fn().mockReturnThis(),
+    };
+    const ruleRepo = stubRuleRepo([
+      {
+        type: 'threshold-discount',
+        provider: 'autoamerica',
+        productCode: '*',
+        quantityValue: 1,
+        discountPct: 10,
+        enabled: true,
+      },
+      {
+        type: 'threshold-discount',
+        provider: 'autoamerica',
+        productCode: 'A',
+        quantityValue: 1,
+        discountPct: 5,
+        enabled: true,
+      },
+    ]);
+
+    await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      clientRepo: stubRepo(),
+      ruleRepo,
+      exportWriter: stubExportWriter(),
+    });
+
+    expect(driver.applyDiscount).toHaveBeenCalledWith('A', 5);
+  });
+
+  it('captures auto screenshot before save and renames it based on PDF export path', async () => {
+    const tempDir = await makeTempDir();
+    const driver = priceModelDriver({ A: 3000 }) as unknown as IPortalDriver;
+    const screenshot = vi.fn(async (path: string) => {
+      await writeFile(path, 'PNG');
+      return { status: 'success' as const, summary: 'ok' };
+    });
+    (driver as any).captureScreenshot = screenshot;
+
+    const exportWriter = vi.fn(async () => join(tempDir, 'final.pdf'));
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+
+    await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      clientRepo: stubRepo(),
+      ruleRepo: stubRuleRepo(),
+      exportWriter,
+      autoScreenshotDir: tempDir,
+    });
+
+    expect(screenshot).toHaveBeenCalled();
+    await expect(stat(join(tempDir, 'final.png'))).resolves.toBeDefined();
+  });
+
+  it('continues when screenshot capture fails and still saves and exports', async () => {
+    const tempDir = await makeTempDir();
+    const driver = priceModelDriver({ A: 3000 }) as unknown as IPortalDriver;
+    const screenshot = vi.fn(async () => ({
+      status: 'error' as const,
+      summary: 'fail',
+    }));
+    (driver as any).captureScreenshot = screenshot;
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const exportWriter = vi.fn(async () => join(tempDir, 'final.pdf'));
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+
+    await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      clientRepo: stubRepo(),
+      ruleRepo: stubRuleRepo(),
+      exportWriter,
+      autoScreenshotDir: tempDir,
+    });
+
+    expect(screenshot).toHaveBeenCalled();
+    expect(driver.save).toHaveBeenCalled();
+    expect(exportWriter).toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('falha ao capturar screenshot final'),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('skips screenshots entirely in dry-run mode', async () => {
+    const tempDir = await makeTempDir();
+    const driver = priceModelDriver({ A: 3000 }) as unknown as IPortalDriver;
+    const screenshot = vi.fn(async () => ({
+      status: 'success' as const,
+      summary: 'ok',
+    }));
+    (driver as any).captureScreenshot = screenshot;
+
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+
+    await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      clientRepo: stubRepo(),
+      ruleRepo: stubRuleRepo(),
+      exportWriter: stubExportWriter(),
+      dryRun: true,
+      autoScreenshotDir: tempDir,
+    });
+
+    expect(screenshot).not.toHaveBeenCalled();
+  });
+
+  it('uses explicit screenshotPath instead of autoScreenshotDir when both are provided', async () => {
+    const tempDir = await makeTempDir();
+    const explicitPath = join(tempDir, 'explicit.png');
+    const driver = priceModelDriver({ A: 3000 }) as unknown as IPortalDriver;
+    const screenshot = vi.fn(async (path: string) => {
+      await writeFile(path, 'PNG');
+      return { status: 'success' as const, summary: 'ok' };
+    });
+    (driver as any).captureScreenshot = screenshot;
+
+    const prompter: Prompter = {
+      ask: vi.fn(),
+      choose: vi.fn(),
+      askInt: vi.fn(),
+      askInts: vi.fn(),
+    };
+
+    await runOrcamento({
+      platform: autoamerica,
+      client: 'c',
+      orderLines: [orderLine('A', 1)],
+      driver: driver as unknown as IPortalDriver,
+      prompter,
+      repo: stubRepo(),
+      clientRepo: stubRepo(),
+      ruleRepo: stubRuleRepo(),
+      exportWriter: stubExportWriter(),
+      screenshotPath: explicitPath,
+      autoScreenshotDir: tempDir,
+    });
+
+    expect(screenshot).toHaveBeenCalledWith(explicitPath);
+    await expect(stat(explicitPath)).resolves.toBeDefined();
   });
 
   it('ignores add-product rules when the portal reports the product already exists', async () => {

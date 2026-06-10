@@ -25,6 +25,7 @@ export interface BatchOptions {
   headed?: boolean;
   dryRun?: boolean;
   screenshotPath?: string;
+  autoScreenshotDir?: string;
 }
 
 export interface BatchSummary {
@@ -134,6 +135,9 @@ async function processTask(
         : new RoberloDriver(runner, user, pass);
 
     const order = parseOrder(data);
+    const contextualPrompter = options.prompter.withContext(
+      `[${provider} / ${order.client}]`,
+    );
 
     let screenshotPath: string | undefined;
     if (options.screenshotPath) {
@@ -149,7 +153,7 @@ async function processTask(
       client: order.client,
       orderLines: order.produtos,
       driver,
-      prompter: options.prompter,
+      prompter: contextualPrompter,
       repo: options.repo,
       clientRepo: options.clientRepo,
       ruleRepo: options.ruleRepo,
@@ -158,6 +162,9 @@ async function processTask(
       interactive: options.interactive ?? false,
       ...(options.dryRun ? { dryRun: true } : {}),
       ...(screenshotPath ? { screenshotPath } : {}),
+      ...(options.autoScreenshotDir
+        ? { autoScreenshotDir: options.autoScreenshotDir }
+        : {}),
     });
 
     return { label: task.label, status: 'success', result };

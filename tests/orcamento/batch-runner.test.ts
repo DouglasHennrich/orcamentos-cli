@@ -23,8 +23,11 @@ describe('runBatch', () => {
   const options = {
     platform: {} as any,
     driverFactory: () => ({}) as IPortalDriver,
-    prompter: {} as Prompter,
+    prompter: {
+      withContext: vi.fn().mockReturnThis(),
+    } as unknown as Prompter,
     repo: {} as any,
+    clientRepo: {} as any,
     ruleRepo: {} as any,
     exportWriter: {} as any,
     concurrency: 2,

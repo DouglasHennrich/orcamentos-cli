@@ -1,4 +1,6 @@
 // src/orcamento/orchestrator.ts
+import { mkdir, rename } from 'node:fs/promises';
+import { dirname, extname, join, resolve } from 'node:path';
 import type { PlatformConfig, IPortalDriver } from '../platforms/types.js';
 import type { Prompter } from '../io/prompt.js';
 import type { OrderLine } from './order.js';
@@ -6,6 +8,7 @@ import type { AliasRepository } from '../db/alias-repository.js';
 import type { ClientRepository } from '../db/client-repository.js';
 import type { ProductRuleRepository } from '../db/product-rule-repository.js';
 import type { ExportWriter } from '../io/export-writer.js';
+import { sanitizeFileName } from '../io/export-writer.js';
 import { resolveLine, type ResolvedLine } from './resolver.js';
 import { toSiteUnits } from './quantity.js';
 import { resolveClient, resolvePriceTable } from './client-resolver.js';
@@ -25,6 +28,7 @@ export interface RunOrcamentoInput {
   interactive?: boolean;
   dryRun?: boolean;
   screenshotPath?: string;
+  autoScreenshotDir?: string;
 }
 
 export interface RunOrcamentoResult {
@@ -52,7 +56,16 @@ export async function runOrcamento(
     interactive = true,
     dryRun = false,
     screenshotPath,
+    autoScreenshotDir,
   } = input;
+
+  const resolveScreenshotDestination = (target: string, label: string) => {
+    const resolved = resolve(target);
+    const ext = extname(resolved).toLowerCase();
+    if (ext === '.png') return resolved;
+    if (ext) return `${resolved}.png`;
+    return join(resolved, `${sanitizeFileName(label)}.png`);
+  };
 
   try {
     await driver.login();
@@ -183,20 +196,6 @@ export async function runOrcamento(
       boxes.set(l.productCode, l.boxes);
     }
 
-    if (duplicateRuleLines.length > 0) {
-      console.warn(
-        `\nAviso: ${duplicateRuleLines.length} produto(s) introduzidos por regra já existiam no pedido e foram ignorados:\n` +
-          duplicateRuleLines.map((p) => `  - ${p}`).join('\n'),
-      );
-    }
-
-    if (duplicateOrderLines.length > 0) {
-      console.warn(
-        `\nAtenção: ${duplicateOrderLines.length} produto(s) do pedido já existiam no orçamento e não foram adicionados:\n` +
-          duplicateOrderLines.map((p) => `  - ${p}`).join('\n'),
-      );
-    }
-
     if (addLineFailures.length > 0) {
       console.warn(
         `\nAtenção: ${addLineFailures.length} produto(s) não foram adicionados ao orçamento:\n` +
@@ -204,56 +203,7 @@ export async function runOrcamento(
       );
     }
 
-    // Minimum-value loop: ask the user which line to bump (1 box per step).
-    // Only consider lines that were successfully added (present in boxes map).
-    const addedLines = lines.filter((l) => boxes.has(l.productCode));
     let total = (await driver.readOrderTotal()).data ?? 0;
-    let iterations = 0;
-    while (total < platform.minOrderValue) {
-      if (++iterations > MAX_BUMP_ITERATIONS) {
-        throw new Error('Loop de valor-mínimo excedeu o limite de iterações.');
-      }
-      if (!interactive) {
-        throw new Error(
-          `Total ${total.toFixed(
-            2,
-          )} < mínimo ${platform.minOrderValue}. Orçamento requer intervenção manual em modo não-interativo.`,
-        );
-      }
-      const indices = await prompter.askInts(
-        `Total ${total.toFixed(2)} < mínimo ${
-          platform.minOrderValue
-        }. Qual produto aumentar (1 caixa)?\n` +
-          addedLines
-            .map(
-              (l, i) =>
-                `${i + 1}) ${l.productCode} - ${l.productName} (${boxes.get(l.productCode)} cx)`,
-            )
-            .join('\n'),
-      );
-      let anyValid = false;
-      for (const idx of indices) {
-        const target = addedLines[idx - 1];
-        if (!target) continue;
-        const newBoxes = (boxes.get(target.productCode) ?? 0) + 1;
-        boxes.set(target.productCode, newBoxes);
-        await driver.updateLine(
-          target.productCode,
-          newBoxes * target.unitsPerBox,
-        );
-        anyValid = true;
-      }
-      if (anyValid) {
-        total = (await driver.readOrderTotal()).data ?? total;
-      }
-    }
-
-    if (addLineFailures.length > 0) {
-      console.warn(
-        `\nAtenção: ${addLineFailures.length} produto(s) não foram adicionados ao orçamento:\n` +
-          addLineFailures.map((p) => `  - ${p}`).join('\n'),
-      );
-    }
 
     // Discounts — only for products successfully added.
     for (const l of lines) {
@@ -278,9 +228,15 @@ export async function runOrcamento(
           (r) =>
             r.type === 'threshold-discount' &&
             r.quantityValue !== undefined &&
-            b >= r.quantityValue,
+            b >= r.quantityValue &&
+            (r.productCode === '*' || r.productCode === l.productCode),
         )
-        .sort((a, b) => (b.discountPct ?? 0) - (a.discountPct ?? 0));
+        .sort((a, b) => {
+          const aSpecific = a.productCode === l.productCode;
+          const bSpecific = b.productCode === l.productCode;
+          if (aSpecific !== bSpecific) return aSpecific ? -1 : 1;
+          return (b.discountPct ?? 0) - (a.discountPct ?? 0);
+        });
 
       if (thresholdRules.length > 0) {
         const bestTier = thresholdRules[0];
@@ -306,22 +262,95 @@ export async function runOrcamento(
       }
     }
 
+    // Minimum check & bump.
+    let iterations = 0;
+    while (total < platform.minOrderValue) {
+      if (iterations++ > MAX_BUMP_ITERATIONS) {
+        throw new Error(
+          `Loop infinito detectado ao aumentar produtos para o mínimo (${platform.minOrderValue}).`,
+        );
+      }
+
+      if (!interactive) {
+        throw new Error(
+          `Total (R$ ${total.toFixed(2)}) abaixo do mínimo (R$ ${platform.minOrderValue}) e requer intervenção manual.`,
+        );
+      }
+
+      console.log(
+        `Total (R$ ${total.toFixed(2)}) abaixo do mínimo (R$ ${platform.minOrderValue}).`,
+      );
+
+      const bumpOptions = lines.filter((l) => boxes.has(l.productCode));
+      if (bumpOptions.length === 0) {
+        throw new Error(
+          'Total abaixo do mínimo e nenhum produto disponível para aumentar.',
+        );
+      }
+
+      const choice = await prompter.choose(
+        'Escolha um produto para aumentar (1 caixa):',
+        bumpOptions.map((l) => ({
+          code: l.productCode,
+          name: `${l.productName} - ${boxes.get(l.productCode)} cx atual`,
+        })),
+      );
+
+      if (!choice) {
+        throw new Error('Processo interrompido pelo usuário.');
+      }
+
+      const line = bumpOptions.find((l) => l.productCode === choice.code)!;
+      const currentBoxes = boxes.get(line.productCode) ?? 0;
+      const newBoxes = currentBoxes + 1;
+      const newUnits = newBoxes * line.unitsPerBox;
+
+      const addResult = await driver.addLine(line.productCode, newUnits);
+      if (addResult.status === 'error') {
+        console.error(
+          `Falha ao aumentar ${line.productCode}: ${addResult.summary}`,
+        );
+        break;
+      }
+
+      boxes.set(line.productCode, newBoxes);
+      total = (await driver.readOrderTotal()).data ?? total;
+    }
+
     // Parcelas + save.
     total = (await driver.readOrderTotal()).data ?? total;
     const plan = platform.computeParcelas(total);
     await driver.setParcelas(plan);
 
-    if (screenshotPath) {
+    const hasExplicitScreenshot = Boolean(screenshotPath);
+    const requestedLabel = requestLabel ?? client;
+    const effectiveScreenshotPath = screenshotPath
+      ? resolveScreenshotDestination(screenshotPath, requestedLabel)
+      : autoScreenshotDir
+        ? resolveScreenshotDestination(
+            resolve(autoScreenshotDir, platform.id),
+            requestedLabel,
+          )
+        : undefined;
+
+    if (!dryRun && effectiveScreenshotPath) {
       if (!driver.captureScreenshot) {
-        throw new Error('Driver não oferece suporte a captura de screenshot.');
-      }
-      const screenshotResult = await driver.captureScreenshot(screenshotPath);
-      if (screenshotResult.status === 'error') {
-        throw new Error(
-          `Falha ao capturar screenshot final: ${screenshotResult.summary}`,
+        console.warn(
+          'Aviso: driver não oferece suporte a captura de screenshot.',
         );
+      } else {
+        await mkdir(dirname(effectiveScreenshotPath), { recursive: true });
+        const screenshotResult = await driver.captureScreenshot(
+          effectiveScreenshotPath,
+        );
+        if (screenshotResult.status === 'error') {
+          console.warn(
+            `Aviso: falha ao capturar screenshot final: ${screenshotResult.summary}`,
+          );
+        } else {
+          console.log(`Screenshot final salvo em: ${effectiveScreenshotPath}`);
+        }
       }
-      console.log(`Screenshot final salvo em: ${screenshotPath}`);
     }
 
     if (dryRun) {
@@ -346,6 +375,28 @@ export async function runOrcamento(
       ...(requestLabel ? { label: requestLabel } : {}),
       pdfBase64: exported.data.pdfBase64,
     });
+
+    if (
+      !hasExplicitScreenshot &&
+      effectiveScreenshotPath &&
+      exportPath.toLowerCase().endsWith('.pdf')
+    ) {
+      const desiredScreenshotPath = exportPath.replace(/\.pdf$/i, '.png');
+      if (desiredScreenshotPath !== effectiveScreenshotPath) {
+        try {
+          // Safety check: ensure we are not overwriting a non-pdf file
+          if (!exportPath.toLowerCase().endsWith('.pdf')) {
+            throw new Error('Export path does not end with .pdf');
+          }
+
+          await mkdir(dirname(desiredScreenshotPath), { recursive: true });
+          await rename(effectiveScreenshotPath, desiredScreenshotPath);
+          console.log(`Screenshot movida para: ${desiredScreenshotPath}`);
+        } catch {
+          // Non-fatal: if rename fails, keep the original screenshot path.
+        }
+      }
+    }
 
     return { total, parcelas: plan.label, exportPath };
   } finally {
