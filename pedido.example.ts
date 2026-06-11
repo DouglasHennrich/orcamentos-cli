@@ -90,7 +90,7 @@ export default [
         quantity: '100 UN',
       },
       {
-        name: 'massa poliester vertrex',
+        name: 'massa poliester vertex',
         quantity: '24 UN',
       },
     ],
