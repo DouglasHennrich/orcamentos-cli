@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   makePrefixedRunner,
   makeRunner,
+  ROBERLO_ARGS,
+  ROBERLO_HEADED_ARGS,
 } from '../../src/platforms/agent-browser-runner.js';
 
 describe('makeRunner', () => {
@@ -40,44 +42,35 @@ describe('agent-browser runner wrappers', () => {
 });
 
 describe('roberlo runners', () => {
-  it('roberloRunner prepends --args and the HttpsUpgrades flag', async () => {
-    const captured: string[][] = [];
-    const fakeExec: import('../../src/platforms/agent-browser-runner.js').ExecFn =
-      async (args) => {
-        captured.push(args);
-        return { stdout: args.join(' '), stderr: '', code: 0 };
-      };
-    const runner = makePrefixedRunner(
-      ['--args', '--disable-features=HttpsUpgrades'],
-      fakeExec,
-    );
-    await runner(['navigate', 'http://example.com']);
-    expect(captured[0]).toEqual([
-      '--args',
-      '--disable-features=HttpsUpgrades',
-      'navigate',
-      'http://example.com',
-    ]);
+  it('ROBERLO_ARGS contains the correct Chromium flag sequence', () => {
+    expect(ROBERLO_ARGS).toEqual(['--args', '--disable-features=HttpsUpgrades']);
   });
 
-  it('roberloHeadedRunner prepends --headed and the HttpsUpgrades flag', async () => {
-    const captured: string[][] = [];
-    const fakeExec: import('../../src/platforms/agent-browser-runner.js').ExecFn =
-      async (args) => {
-        captured.push(args);
-        return { stdout: args.join(' '), stderr: '', code: 0 };
-      };
-    const runner = makePrefixedRunner(
-      ['--headed', '--args', '--disable-features=HttpsUpgrades'],
-      fakeExec,
-    );
-    await runner(['navigate', 'http://example.com']);
-    expect(captured[0]).toEqual([
+  it('ROBERLO_HEADED_ARGS contains --headed and the correct Chromium flag sequence', () => {
+    expect(ROBERLO_HEADED_ARGS).toEqual([
       '--headed',
       '--args',
       '--disable-features=HttpsUpgrades',
-      'navigate',
-      'http://example.com',
     ]);
+  });
+
+  it('roberloRunner prepends ROBERLO_ARGS before command args', async () => {
+    const runner = makePrefixedRunner([...ROBERLO_ARGS], async (args) => ({
+      stdout: args.join(' '),
+      stderr: '',
+      code: 0,
+    }));
+    const res = await runner(['navigate', 'http://example.com']);
+    expect(res.stdout).toBe('--args --disable-features=HttpsUpgrades navigate http://example.com');
+  });
+
+  it('roberloHeadedRunner prepends ROBERLO_HEADED_ARGS before command args', async () => {
+    const runner = makePrefixedRunner([...ROBERLO_HEADED_ARGS], async (args) => ({
+      stdout: args.join(' '),
+      stderr: '',
+      code: 0,
+    }));
+    const res = await runner(['navigate', 'http://example.com']);
+    expect(res.stdout).toBe('--headed --args --disable-features=HttpsUpgrades navigate http://example.com');
   });
 });
