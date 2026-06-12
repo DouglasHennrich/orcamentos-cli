@@ -71,6 +71,24 @@ export class AutoAmericaDriver implements IPortalDriver {
     return false;
   }
 
+  private async checkMultipleModal(): Promise<number | null> {
+    const raw = await this.evalRaw(`
+      (function() {
+        var modal = document.querySelector('.modal-dialog');
+        if (!modal) return 'null';
+        var body = (modal.querySelector('.bootbox-body') || modal.querySelector('.modal-body'))?.textContent || '';
+        var m = body.match(/m[\\u00fa\\u0075]ltiplo de (\\d+)/i);
+        if (!m) return 'null';
+        var ok = modal.querySelector('button[data-bb-handler="ok"], button.btn-primary');
+        if (ok) ok.click();
+        return m[1];
+      })()
+    `);
+    if (raw === 'null') return null;
+    const n = parseInt(raw, 10);
+    return n > 0 ? n : null;
+  }
+
   private async dismissDuplicateProductModal(): Promise<boolean> {
     const text = await this.evalRaw(`
       (function() {
@@ -561,31 +579,60 @@ export class AutoAmericaDriver implements IPortalDriver {
       };
     }
 
-    // Set quantity and trigger price recalculation using the portal's validation flow.
-    // VldQtd/TotalItem/VldValor are portal globals; guard with typeof in case the
-    // page is briefly in a transition state between row additions.
-    await this.evalRaw(`
-      (function() {
-        var q = jQuery('#CK_QTDVEN${n}');
-        q.removeAttr('disabled');
-        q.val(${JSON.stringify(String(units))}).trigger('change');
-        q.focus().blur();
-        if (typeof VldQtd === 'function') VldQtd('${n}');
-        if (typeof TotalItem === 'function') TotalItem('${n}');
-        if (typeof VldValor === 'function') VldValor('${n}');
-      })();
-      'done'
-    `);
+    const setQuantity = async (qty: number) => {
+      await this.evalRaw(`
+        (function() {
+          var q = jQuery('#CK_QTDVEN${n}');
+          q.removeAttr('disabled');
+          q.val(${JSON.stringify(String(qty))}).trigger('change');
+          q.focus().blur();
+          if (typeof VldQtd === 'function') VldQtd('${n}');
+          if (typeof TotalItem === 'function') TotalItem('${n}');
+          if (typeof VldValor === 'function') VldValor('${n}');
+        })();
+        'done'
+      `);
+    };
 
-    // Wait for the portal to compute the item total.
+    await setQuantity(units);
+
+    // Wait for the portal to either compute the total OR show a validation modal.
+    // Exiting on either condition avoids fixed-delay races: we don't know which
+    // fires first — the portal may briefly set CK_VALOR via VldValor and then reset
+    // it when VldQtd detects a múltiplo constraint and opens the modal.
     await this.waitFor(
-      `(document.getElementById('CK_VALOR${n}')?.value || '').replace(/[^0-9]/g,'') !== ''`,
-      5000,
+      `(document.getElementById('CK_VALOR${n}')?.value || '').replace(/[^0-9]/g,'') !== '' || document.querySelector('.modal-dialog .bootbox-body')`,
+      6000,
     );
+
+    // Always check for the modal unconditionally: the portal may have set CK_VALOR
+    // briefly before showing the modal, so checking only when value is absent is unreliable.
+    const detectedMultiple = await this.checkMultipleModal();
+    let effectiveUnits = units;
+    if (detectedMultiple !== null) {
+      // Round up so the client receives at least what they ordered.
+      effectiveUnits = Math.ceil(units / detectedMultiple) * detectedMultiple;
+      // Wait for modal dismiss animation, then retry with the corrected quantity.
+      await this.waitFor(`!document.querySelector('.modal-dialog')`, 3000);
+      await setQuantity(effectiveUnits);
+      // Wait for the portal's AJAX validation to fully settle before the next item
+      // can safely click btAddItm — avoids "Linha N não apareceu" on subsequent items.
+      await this.waitFor(
+        `!document.querySelector('.blockUI, .modal-backdrop, .modal.in')`,
+        5000,
+      );
+      await this.waitFor(
+        `(document.getElementById('CK_VALOR${n}')?.value || '').replace(/[^0-9]/g,'') !== ''`,
+        5000,
+      );
+    }
 
     return {
       status: 'success',
-      summary: `Item ${n}: produto ${productCode} × ${units} un`,
+      summary:
+        detectedMultiple !== null
+          ? `Item ${n}: produto ${productCode} × ${effectiveUnits} un (ajustado de ${units} — múltiplo de ${detectedMultiple})`
+          : `Item ${n}: produto ${productCode} × ${units} un`,
     };
   }
 
@@ -734,12 +781,17 @@ export class AutoAmericaDriver implements IPortalDriver {
       `document.getElementById('btSalvar').click(); 'clicked'`,
     );
 
-    // btSalvar shows a bootbox-confirm (Sim/Não) — wait for it then click Sim.
-    await this.waitFor(`document.querySelector('.bootbox-confirm.in')`, 5000);
+    // btSalvar shows a bootbox-confirm — wait for the modal element (without requiring
+    // .in, which Bootstrap adds asynchronously during the fade-in animation).
+    await this.waitFor(`document.querySelector('.bootbox-confirm')`, 8000);
+
+    // Brief pause so Bootstrap can add .in and make buttons interactive.
+    await new Promise((r) => setTimeout(r, 400));
 
     const simClicked = await this.evalRaw(`
       (function() {
-        var modal = document.querySelector('.bootbox-confirm.in');
+        // Accept modal with or without .in (animation timing)
+        var modal = document.querySelector('.bootbox-confirm.in') || document.querySelector('.bootbox-confirm');
         if (modal) {
           var sim = Array.from(modal.querySelectorAll('button')).find(function(b) {
             var t = (b.textContent || '').trim().toLowerCase();
@@ -749,15 +801,30 @@ export class AutoAmericaDriver implements IPortalDriver {
           var primary = modal.querySelector('button.btn-primary');
           if (primary) { primary.click(); return 'clicked:bootbox-primary'; }
         }
+        // Fallback: any visible modal that has a Sim/Yes button
+        var anyModal = document.querySelector('.modal.in');
+        if (anyModal) {
+          var sim2 = Array.from(anyModal.querySelectorAll('button')).find(function(b) {
+            var t = (b.textContent || '').trim().toLowerCase();
+            return t === 'sim' || t === 's' || t === 'yes';
+          });
+          if (sim2) { sim2.click(); return 'clicked:anymodal-sim'; }
+        }
         var confirma = document.getElementById('dialogConfirm');
         if (confirma) { confirma.click(); return 'clicked:dialogConfirm'; }
         return 'not-found';
       })()
     `);
 
-    if (simClicked !== 'not-found') {
-      await this.waitLoad();
+    if (simClicked === 'not-found') {
+      return {
+        status: 'error',
+        summary:
+          'Botão de confirmação de salvamento não encontrado — orçamento NÃO foi salvo',
+      };
     }
+
+    await this.waitLoad();
 
     // Navigate to the listing via the menu link (same pattern as startQuote).
     await this.evalRaw(
@@ -765,6 +832,26 @@ export class AutoAmericaDriver implements IPortalDriver {
     );
     await this.waitLoad();
     await this.waitFor(`document.querySelector('a[onclick*="PrtOrc"]')`, 10000);
+
+    // Capture the highest rec from the listing — Protheus auto-increments recs,
+    // so the largest value is always the most recently saved order.
+    const capturedRec = await this.evalRaw(`
+      (function() {
+        var bestRec = -1;
+        Array.from(document.querySelectorAll('a[onclick*="PrtOrc"]')).forEach(function(a) {
+          var m = (a.getAttribute('onclick') || '').match(/PrtOrc\\((\\d+)\\)/);
+          if (m) {
+            var r = parseInt(m[1], 10);
+            if (r > bestRec) bestRec = r;
+          }
+        });
+        return bestRec > 0 ? String(bestRec) : '';
+      })()
+    `);
+
+    if (capturedRec) {
+      this.savedRec = capturedRec;
+    }
 
     return { status: 'success', summary: 'Orçamento salvo com sucesso' };
   }

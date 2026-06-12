@@ -158,10 +158,7 @@ async function addRule(
       });
       productName = await nameInput.run();
 
-      let alias = aliasRepo.find(provider, aliasRaw);
-      if (!alias) {
-        alias = aliasRepo.findFuzzy(provider, aliasRaw);
-      }
+      const alias = aliasRepo.find(provider, aliasRaw);
 
       if (!alias) {
         const unitsInput = new Input({

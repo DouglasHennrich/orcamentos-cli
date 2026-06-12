@@ -50,20 +50,6 @@ export class AliasRepository {
     return row ? this.mapRow(row) : undefined;
   }
 
-  findFuzzy(platform: Platform, terms: string): AliasRecord | undefined {
-    const words = normalizeAlias(terms).split(/\s+/).filter(Boolean);
-    if (words.length === 0) return undefined;
-    const stmt = this.db.prepare(
-      'SELECT platform, alias_norm, alias_raw, product_code, product_name, units_per_box, created_at FROM aliases WHERE platform = ?',
-    );
-    const rows = stmt.all(platform) as Record<string, unknown>[];
-    const match = rows.find((row) => {
-      const norm = row.alias_norm as string;
-      return words.every((w) => norm.includes(w));
-    });
-    return match ? this.mapRow(match) : undefined;
-  }
-
   save(input: SaveAliasInput): void {
     const stmt = this.db.prepare(
       `INSERT INTO aliases (platform, alias_norm, alias_raw, product_code, product_name, units_per_box, created_at)

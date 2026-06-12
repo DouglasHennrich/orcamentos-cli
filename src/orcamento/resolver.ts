@@ -30,8 +30,7 @@ export async function resolveLine(
 ): Promise<ResolvedLine> {
   const { platform, repo, driver, prompter, interactive = true } = deps;
 
-  const cached =
-    repo.find(platform, line.name) ?? repo.findFuzzy(platform, line.name);
+  const cached = repo.find(platform, line.name);
   if (cached) {
     return build(
       line,
