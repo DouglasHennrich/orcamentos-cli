@@ -44,3 +44,15 @@ export const headedRunner: AgentBrowserRunner = makePrefixedRunner(
   ['--headed'],
   execAgentBrowser,
 );
+
+/** Roberlo headless runner: disables Chrome HTTPS Upgrades to avoid the HTTP security interstitial. */
+export const roberloRunner: AgentBrowserRunner = makePrefixedRunner(
+  ['--args', '--disable-features=HttpsUpgrades'],
+  execAgentBrowser,
+);
+
+/** Roberlo headed runner: visible window + disables Chrome HTTPS Upgrades. */
+export const roberloHeadedRunner: AgentBrowserRunner = makePrefixedRunner(
+  ['--headed', '--args', '--disable-features=HttpsUpgrades'],
+  execAgentBrowser,
+);
