@@ -1,19 +1,39 @@
 export default [
   {
     provider: 'autoamerica',
-    client: 'Peruzzo',
+    client: 'Carlesso',
     produtos: [
       {
-        name: 'triple wax 100gr',
-        quantity: '10 UN',
+        name: 'super polidor',
+        quantity: '20',
       },
       {
-        name: 'fast cut',
+        name: 'flanela',
+        quantity: '10',
+      },
+      {
+        name: 'clay bar 100mg',
+        quantity: '2',
+      },
+      {
+        name: 'boina branca',
+        quantity: '30 UN',
+      },
+      {
+        name: 'boina amarela',
         quantity: '12 UN',
       },
       {
-        name: 'super polidor',
-        quantity: '120 UN',
+        name: 'triple past wax 3 em 1',
+        quantity: '1',
+      },
+      {
+        name: 'Silvermax 5L',
+        quantity: '1',
+      },
+      {
+        name: 'Silvermax 1,5L',
+        quantity: '1',
       },
     ],
   },

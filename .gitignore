@@ -9,3 +9,4 @@ tmp
 **/.specify/**
 !**/.specify/memory/
 !**/.specify/memory/constitution.md
+public/
