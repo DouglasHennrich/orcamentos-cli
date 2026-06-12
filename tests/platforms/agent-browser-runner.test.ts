@@ -43,14 +43,17 @@ describe('agent-browser runner wrappers', () => {
 
 describe('roberlo runners', () => {
   it('ROBERLO_ARGS contains the correct Chromium flag sequence', () => {
-    expect(ROBERLO_ARGS).toEqual(['--args', '--disable-features=HttpsUpgrades']);
+    expect(ROBERLO_ARGS).toEqual([
+      '--args',
+      '--unsafely-treat-insecure-origin-as-secure=http://52.67.57.130',
+    ]);
   });
 
   it('ROBERLO_HEADED_ARGS contains --headed and the correct Chromium flag sequence', () => {
     expect(ROBERLO_HEADED_ARGS).toEqual([
       '--headed',
       '--args',
-      '--disable-features=HttpsUpgrades',
+      '--unsafely-treat-insecure-origin-as-secure=http://52.67.57.130',
     ]);
   });
 
@@ -61,16 +64,23 @@ describe('roberlo runners', () => {
       code: 0,
     }));
     const res = await runner(['navigate', 'http://example.com']);
-    expect(res.stdout).toBe('--args --disable-features=HttpsUpgrades navigate http://example.com');
+    expect(res.stdout).toBe(
+      '--args --unsafely-treat-insecure-origin-as-secure=http://52.67.57.130 navigate http://example.com',
+    );
   });
 
   it('roberloHeadedRunner prepends ROBERLO_HEADED_ARGS before command args', async () => {
-    const runner = makePrefixedRunner([...ROBERLO_HEADED_ARGS], async (args) => ({
-      stdout: args.join(' '),
-      stderr: '',
-      code: 0,
-    }));
+    const runner = makePrefixedRunner(
+      [...ROBERLO_HEADED_ARGS],
+      async (args) => ({
+        stdout: args.join(' '),
+        stderr: '',
+        code: 0,
+      }),
+    );
     const res = await runner(['navigate', 'http://example.com']);
-    expect(res.stdout).toBe('--headed --args --disable-features=HttpsUpgrades navigate http://example.com');
+    expect(res.stdout).toBe(
+      '--headed --args --unsafely-treat-insecure-origin-as-secure=http://52.67.57.130 navigate http://example.com',
+    );
   });
 });

@@ -45,16 +45,26 @@ export const headedRunner: AgentBrowserRunner = makePrefixedRunner(
   execAgentBrowser,
 );
 
-export const ROBERLO_ARGS = ['--args', '--disable-features=HttpsUpgrades'] as const;
-export const ROBERLO_HEADED_ARGS = ['--headed', '--args', '--disable-features=HttpsUpgrades'] as const;
+// Chromium blocks plain-HTTP navigation to IP addresses via its HTTPS-first enforcement.
+// --unsafely-treat-insecure-origin-as-secure tells Chrome to bypass that check for this
+// specific origin only, leaving HTTPS enforcement intact for all other sites.
+export const ROBERLO_ARGS = [
+  '--args',
+  '--unsafely-treat-insecure-origin-as-secure=http://52.67.57.130',
+] as const;
+export const ROBERLO_HEADED_ARGS = [
+  '--headed',
+  '--args',
+  '--unsafely-treat-insecure-origin-as-secure=http://52.67.57.130',
+] as const;
 
-/** Roberlo headless runner: disables Chrome HTTPS Upgrades to avoid the HTTP security interstitial. */
+/** Roberlo headless runner: bypasses Chrome HTTPS enforcement for the Roberlo HTTP portal. */
 export const roberloRunner: AgentBrowserRunner = makePrefixedRunner(
   [...ROBERLO_ARGS],
   execAgentBrowser,
 );
 
-/** Roberlo headed runner: visible window + disables Chrome HTTPS Upgrades. */
+/** Roberlo headed runner: visible window + bypasses Chrome HTTPS enforcement for the Roberlo HTTP portal. */
 export const roberloHeadedRunner: AgentBrowserRunner = makePrefixedRunner(
   [...ROBERLO_HEADED_ARGS],
   execAgentBrowser,
