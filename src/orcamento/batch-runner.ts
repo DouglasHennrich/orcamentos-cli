@@ -6,7 +6,12 @@ import { autoamerica } from '../platforms/autoamerica.js';
 import { roberlo } from '../platforms/roberlo.js';
 import { AutoAmericaDriver } from '../platforms/autoamerica-driver.js';
 import { RoberloDriver } from '../platforms/roberlo-driver.js';
-import { headedRunner, realRunner, roberloRunner, roberloHeadedRunner } from '../platforms/agent-browser-runner.js';
+import {
+  headedRunner,
+  realRunner,
+  roberloRunner,
+  roberloHeadedRunner,
+} from '../platforms/agent-browser-runner.js';
 import type { Prompter } from '../io/prompt.js';
 import type { AliasRepository } from '../db/alias-repository.js';
 import type { ClientRepository } from '../db/client-repository.js';
@@ -138,9 +143,14 @@ async function processTask(
       );
     }
 
-    const runner = provider === 'roberlo'
-      ? (options.headed ? roberloHeadedRunner : roberloRunner)
-      : (options.headed ? headedRunner : realRunner);
+    const runner =
+      provider === 'roberlo'
+        ? options.headed
+          ? roberloHeadedRunner
+          : roberloRunner
+        : options.headed
+          ? headedRunner
+          : realRunner;
     const driver =
       provider === 'autoamerica'
         ? new AutoAmericaDriver(runner, user, pass)
