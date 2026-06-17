@@ -1,65 +1,53 @@
 export default [
   // {
   //   provider: 'autoamerica',
-  //   client: 'Carlesso',
+  //   client: 'irmãos jouglard',
   //   produtos: [
   //     {
-  //       name: 'super polidor',
-  //       quantity: '20',
-  //     },
-  //     {
-  //       name: 'flanela',
-  //       quantity: '10',
-  //     },
-  //     {
-  //       name: 'clay bar 100mg',
-  //       quantity: '2',
-  //     },
-  //     {
-  //       name: 'boina branca',
-  //       quantity: '30 UN',
-  //     },
-  //     {
-  //       name: 'boina amarela',
-  //       quantity: '12 UN',
-  //     },
-  //     {
-  //       name: 'triple past wax 3 em 1',
-  //       quantity: '1',
-  //     },
-  //     {
-  //       name: 'Silvermax 5L',
-  //       quantity: '1',
-  //     },
-  //     {
-  //       name: 'Silvermax 1,5L',
+  //       name: 'flanela 40x60',
   //       quantity: '1',
   //     },
   //   ],
   // },
   {
     provider: 'roberlo',
-    client: '11606011000136',
+    client: 'Perfect Car',
     produtos: [
       {
-        name: 'siltex 400 cinza - 900gr',
-        quantity: '72 UN',
+        name: 'pega pó',
+        quantity: '200 UN',
       },
       {
-        name: 'siltex 400 preto - 900gr',
-        quantity: '72 UN',
+        name: 'Solução Desengraxante lt',
+        quantity: '60 UN',
       },
       {
-        name: 'siltex protector preto 1kg',
+        name: 'Siltex 400 Preto',
+        quantity: '24 UN',
+      },
+      {
+        name: 'Siltex 400 Cinza',
+        quantity: '24 UN',
+      },
+      {
+        name: 'Massa Vertex',
         quantity: '36 UN',
       },
       {
-        name: 'aircolor blender 400ml',
-        quantity: '12 UN',
+        name: 'Verniz Global 4000 GL',
+        quantity: '4 UN',
       },
       {
-        name: 'aircolor isofast FX2 - 400ml medium',
+        name: 'Catalisador P6000 lt',
         quantity: '36 UN',
+      },
+      {
+        name: 'Diluente PU 5L',
+        quantity: '6 UN',
+      },
+      {
+        name: 'Massa Multiextender',
+        quantity: '24 UN',
       },
     ],
   },
