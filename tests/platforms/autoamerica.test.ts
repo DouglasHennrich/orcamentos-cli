@@ -7,6 +7,7 @@ describe('autoamerica config', () => {
     expect(autoamerica.tabelaPrecos).toBe('099 - POLIMENTO C5_12% SP-RS-MG-RJ');
     expect(autoamerica.frete).toBe('CIF');
     expect(autoamerica.tipoOrcamento).toBe('Em elaboração');
+    expect(autoamerica.transportadora).toBe('000157');
   });
   it('gives 15% discount for more than 10 boxes', () => {
     expect(autoamerica.computeLineDiscount(11)).toBe(15);

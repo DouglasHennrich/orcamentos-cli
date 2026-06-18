@@ -6,7 +6,7 @@ describe('roberlo config', () => {
     expect(roberlo.minOrderValue).toBe(5000);
     expect(roberlo.frete).toBe('CIF');
     expect(roberlo.tipoOrcamento).toBe('Previsto');
-    expect(roberlo.transportadora).toContain('TRANS');
+    expect(roberlo.transportadora).toBe('000293');
   });
   it('discount is portal-driven (config returns 0)', () => {
     expect(roberlo.computeLineDiscount(99)).toBe(0);

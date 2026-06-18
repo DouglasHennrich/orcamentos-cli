@@ -5,7 +5,7 @@ export const autoamerica: PlatformConfig = {
   url: process.env.AUTOAMERICA_URL ?? '',
   tipoOrcamento: 'Em elaboração',
   tabelaPrecos: '099 - POLIMENTO C5_12% SP-RS-MG-RJ',
-  transportadora: 'EXPRESSO SAO MIGUEL LTDA',
+  transportadora: '000157',
   frete: 'CIF',
   minOrderValue: 2500,
   computeLineDiscount(boxes: number): number {

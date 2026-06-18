@@ -50,6 +50,46 @@ describe('AutoAmericaDriver.exportQuote', () => {
     expect(res.status).toBe('error');
     expect(res.summary).toMatch(/listagem vazia/);
   });
+
+  it('deduplicates repeated search results by product code', async () => {
+    const repeatedResults = [
+      {
+        code: '303535001',
+        name: 'BRILHO RAP S/SIL MOTHERS 473ML',
+      },
+      {
+        code: '303535004',
+        name: 'CAL.GOLD SYNTHETIC WAX - CERA SINTETICA LIQUIDA',
+      },
+      {
+        code: '303535001',
+        name: 'BRILHO RAP S/SIL MOTHERS 473ML',
+      },
+      {
+        code: '303535004',
+        name: 'CAL.GOLD SYNTHETIC WAX - CERA SINTETICA LIQUIDA',
+      },
+    ];
+    const driver = new AutoAmericaDriver(
+      async () => ({ stdout: enc(repeatedResults), stderr: '', code: 0 }),
+      'u',
+      'p',
+    );
+
+    const res = await driver.searchProducts('3500');
+    expect(res.status).toBe('success');
+    expect(res.data).toEqual([
+      {
+        code: '303535001',
+        name: 'BRILHO RAP S/SIL MOTHERS 473ML',
+      },
+      {
+        code: '303535004',
+        name: 'CAL.GOLD SYNTHETIC WAX - CERA SINTETICA LIQUIDA',
+      },
+    ]);
+    expect(res.data).toHaveLength(2);
+  });
 });
 
 describe('RoberloDriver.exportQuote', () => {

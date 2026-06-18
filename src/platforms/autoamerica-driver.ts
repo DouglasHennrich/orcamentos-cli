@@ -426,13 +426,20 @@ export class AutoAmericaDriver implements IPortalDriver {
               var text = o.text.toLowerCase();
               return words.every(function(w) { return text.includes(w); });
             })
-            .slice(0, 20)
             .map(function(o) { return {code: o.value, name: o.text}; });
         })()
       )
     `);
 
-    if (data.length === 0) {
+    const uniqueByCode = new Map<string, ProductOption>();
+    for (const item of data) {
+      if (!uniqueByCode.has(item.code)) {
+        uniqueByCode.set(item.code, item);
+      }
+    }
+    const unique = Array.from(uniqueByCode.values()).slice(0, 20);
+
+    if (unique.length === 0) {
       return {
         status: 'warning',
         summary: `Nenhum produto encontrado para: "${terms}"`,
@@ -441,8 +448,8 @@ export class AutoAmericaDriver implements IPortalDriver {
     }
     return {
       status: 'success',
-      summary: `${data.length} produto(s) encontrado(s)`,
-      data,
+      summary: `${unique.length} produto(s) encontrado(s)`,
+      data: unique,
     };
   }
 

@@ -4,7 +4,7 @@ export const roberlo: PlatformConfig = {
   id: 'roberlo',
   url: process.env.ROBERLO_URL ?? '',
   tipoOrcamento: 'Previsto',
-  transportadora: 'TRANS - FACE TRANSPORTES LTDA - 61683652000243',
+  transportadora: '000293',
   frete: 'CIF',
   minOrderValue: 5000,
   computeLineDiscount(): number {
